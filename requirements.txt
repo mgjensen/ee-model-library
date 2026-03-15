@@ -1,0 +1,5 @@
+openpyxl
+pydantic
+pandas
+pytest
+fastapi
