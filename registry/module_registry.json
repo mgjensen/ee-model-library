@@ -1,1 +1,10 @@
-{}
+{
+  "WACC_001": {
+    "module_id": "WACC_001",
+    "version": "1.0",
+    "tier": "both",
+    "markets": ["DK", "DE", "*"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/core/WACC_001.py"
+  }
+}
