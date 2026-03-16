@@ -37,5 +37,18 @@
     "typical_tenor_years": 20,
     "typical_interest_rate": 0.045,
     "typical_gearing": 0.80
+  },
+  "tax": {
+    "tax_rate": 0.22,
+    "depreciation_rate": 0.15,
+    "ebitda_pct": 0.30,
+    "unrestricted_interest_DKKk": 21300.0,
+    "interest_carryforward_years": 5,
+    "loss_full_limit_DKKk": 20829.0,
+    "loss_partial_pct": 0.60,
+    "inflation_rate": 0.02,
+    "payment_month_prior": 3,
+    "payment_month_current": 11,
+    "ytd_payment_fraction": 0.50
   }
 }

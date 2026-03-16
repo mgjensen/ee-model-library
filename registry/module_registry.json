@@ -6,5 +6,109 @@
     "markets": ["DK", "DE", "*"],
     "technologies": ["PV", "BESS", "WIND", "*"],
     "path": "modules/core/WACC_001.py"
+  },
+  "TAX_001": {
+    "module_id": "TAX_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/tax/TAX_001.py"
+  },
+  "DEBT_001": {
+    "module_id": "DEBT_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/debt/DEBT_001.py"
+  },
+  "CAPEX_001": {
+    "module_id": "CAPEX_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/capex/CAPEX_001.py"
+  },
+  "OPEX_001": {
+    "module_id": "OPEX_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "*"],
+    "technologies": ["PV"],
+    "path": "modules/costs/OPEX_001.py"
+  },
+  "OPEX_002": {
+    "module_id": "OPEX_002",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "*"],
+    "technologies": ["BESS"],
+    "path": "modules/costs/OPEX_002.py"
+  },
+  "OPEX_003": {
+    "module_id": "OPEX_003",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "SE", "PL", "*"],
+    "technologies": ["WIND"],
+    "path": "modules/costs/OPEX_003.py"
+  },
+  "REV_001": {
+    "module_id": "REV_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "*"],
+    "technologies": ["PV"],
+    "path": "modules/revenue/REV_001.py"
+  },
+  "REV_002": {
+    "module_id": "REV_002",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "*"],
+    "technologies": ["BESS"],
+    "path": "modules/revenue/REV_002.py"
+  },
+  "REV_003": {
+    "module_id": "REV_003",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "SE", "PL", "*"],
+    "technologies": ["WIND"],
+    "path": "modules/revenue/REV_003.py"
+  },
+  "PL_001": {
+    "module_id": "PL_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/statements/PL_001.py"
+  },
+  "CF_001": {
+    "module_id": "CF_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/statements/CF_001.py"
+  },
+  "BS_001": {
+    "module_id": "BS_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/statements/BS_001.py"
+  },
+  "IRR_001": {
+    "module_id": "IRR_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/statements/IRR_001.py"
   }
 }

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py -m pytest --tb=short -q)",
+      "Bash(py -m pytest tests/test_integration/test_viuf_e2e.py::test_all_modules_ran --tb=long)",
+      "Bash(git add:*)"
+    ]
+  }
+}

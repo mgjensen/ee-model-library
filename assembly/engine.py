@@ -1,1 +1,421 @@
-# assembly/engine.py
+"""
+assembly/engine.py
+
+Orchestration engine for ee-model-library.
+
+Runs all enabled calculation modules in dependency order, wiring upstream
+outputs into downstream module inputs automatically.
+
+Execution order:
+    1. WACC_001   — cost of capital (scalar outputs)
+    2. REV_001    — PV revenue
+    3. REV_002    — BESS revenue
+    4. REV_003    — Wind revenue
+    5. OPEX_001   — PV OPEX
+    6. OPEX_002   — BESS OPEX
+    7. OPEX_003   — Wind OPEX
+    8. CAPEX_001  — capital expenditure
+    9. DEBT_001   — debt schedule
+   10. TAX_001    — Danish corporate tax  (wired: ebitda, interest, capex_by_bucket)
+   11. PL_001     — P&L statement         (fully wired)
+   12. CF_001     — cash flow statement   (fully wired)
+   13. BS_001     — balance sheet         (fully wired)
+   14. IRR_001    — DCF valuation         (fully wired)
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Optional
+
+from pydantic import BaseModel, Field
+
+import modules.core.WACC_001 as WACC_001
+import modules.revenue.REV_001 as REV_001
+import modules.revenue.REV_002 as REV_002
+import modules.revenue.REV_003 as REV_003
+import modules.costs.OPEX_001 as OPEX_001
+import modules.costs.OPEX_002 as OPEX_002
+import modules.costs.OPEX_003 as OPEX_003
+import modules.capex.CAPEX_001 as CAPEX_001
+import modules.debt.DEBT_001 as DEBT_001
+import modules.tax.TAX_001 as TAX_001
+import modules.statements.PL_001 as PL_001
+import modules.statements.CF_001 as CF_001
+import modules.statements.BS_001 as BS_001
+import modules.statements.IRR_001 as IRR_001
+
+
+# ============================================================================
+# CONFIG MODELS
+# ============================================================================
+
+class TimelineConfig(BaseModel):
+    """Project timeline — defined once, injected into every module."""
+    periods: int = Field(..., gt=0, description="Total project life in months")
+    start_year: int = Field(..., description="Calendar year of period 0")
+    start_month: int = Field(..., ge=1, le=12, description="Calendar month (1-12) of period 0")
+
+
+class TaxConfig(BaseModel):
+    """
+    User-supplied TAX_001 inputs.
+    ebitda and total_interest are wired by the engine from upstream outputs.
+    """
+    country: str = Field("DK", description="Market — used to load assumption_db")
+    capex_by_bucket: Optional[list[list[float]]] = Field(
+        None,
+        description=(
+            "Monthly capex additions per bucket — 4 lists each length=periods. "
+            "None → engine auto-populates bucket 0 from CAPEX_001.total_capex_monthly."
+        ),
+    )
+    opening_balances: list[float] = Field(
+        [0.0, 0.0, 0.0, 0.0],
+        description="Opening tax depreciation basis per bucket DKKk (4 values)"
+    )
+
+
+class StatementConfig(BaseModel):
+    """
+    User-supplied inputs for the statement modules (PL, CF, BS, IRR).
+    All time-series inputs to these modules are wired by the engine from upstream outputs.
+    """
+    opening_cash_DKKk: float = Field(0.0, description="Opening cash balance DKKk")
+    opening_contributed_equity_DKKk: float = Field(
+        0.0, description="Equity contributed at financial close DKKk"
+    )
+    opening_retained_earnings_DKKk: float = Field(
+        0.0, description="Retained earnings at project start DKKk"
+    )
+    project_discount_rate: Optional[float] = Field(
+        None, description="Annual project discount rate for NPV. None → use WACC_001.wacc"
+    )
+    equity_discount_rate: Optional[float] = Field(
+        None,
+        description="Annual equity discount rate for NPV. None → use WACC_001.blended_cost_of_equity"
+    )
+    working_capital_change: list[float] = Field(
+        default_factory=list,
+        description="Monthly working capital change DKKk (optional)"
+    )
+    dividends_paid: list[float] = Field(
+        default_factory=list,
+        description="Monthly dividends paid DKKk (optional)"
+    )
+
+
+class ProjectConfig(BaseModel):
+    """
+    Top-level project configuration.
+
+    Each module config field accepts the module's own Inputs model.
+    Set to None to disable a module — disabled modules are skipped and
+    their outputs are absent from AssemblyResult.
+
+    The engine overrides periods / start_year / start_month from `timeline`
+    before calling each module's calculate(), so these fields in sub-configs
+    are ignored.
+    """
+    project_name: str
+    market: str = "DK"
+    technology: str = "PV"
+    timeline: TimelineConfig
+
+    # Module configs — None = disabled
+    wacc:     Optional[WACC_001.Inputs]  = None
+    rev_pv:   Optional[REV_001.Inputs]   = None   # REV_001
+    rev_bess: Optional[REV_002.Inputs]   = None   # REV_002
+    rev_wind: Optional[REV_003.Inputs]   = None   # REV_003
+    opex_pv:  Optional[OPEX_001.Inputs]  = None   # OPEX_001
+    opex_bess: Optional[OPEX_002.Inputs] = None   # OPEX_002
+    opex_wind: Optional[OPEX_003.Inputs] = None   # OPEX_003
+    capex:    Optional[CAPEX_001.Inputs] = None   # CAPEX_001
+    debt:     Optional[DEBT_001.Inputs]  = None   # DEBT_001
+    tax:      Optional[TaxConfig]        = None   # TAX_001
+    statements: StatementConfig = Field(default_factory=StatementConfig)
+
+
+# ============================================================================
+# RESULT
+# ============================================================================
+
+@dataclass
+class AssemblyResult:
+    """Container for all module outputs from a single run."""
+    project_name: str
+    periods: int
+    start_year: int
+    start_month: int
+    outputs: dict[str, Any] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+
+    def get(self, module_id: str) -> Any:
+        """Return output for a given module, or None if disabled."""
+        return self.outputs.get(module_id)
+
+
+# ============================================================================
+# HELPERS
+# ============================================================================
+
+def _inject_timeline(inp: BaseModel, tl: TimelineConfig) -> BaseModel:
+    """Override periods/start_year/start_month from the project timeline."""
+    return inp.model_copy(update={
+        "periods": tl.periods,
+        "start_year": tl.start_year,
+        "start_month": tl.start_month,
+    })
+
+
+def _zeros(n: int) -> list[float]:
+    return [0.0] * n
+
+
+def _add_series(*series: Optional[list[float]], n: int) -> list[float]:
+    """Element-wise sum of series; None entries are treated as zero."""
+    result = [0.0] * n
+    for s in series:
+        if s:
+            for p in range(n):
+                result[p] += s[p]
+    return result
+
+
+
+# ============================================================================
+# CORE RUN FUNCTION
+# ============================================================================
+
+def run(config: ProjectConfig) -> AssemblyResult:
+    """
+    Execute all enabled modules in dependency order and return AssemblyResult.
+
+    Raises ValueError if a required upstream module is disabled when a
+    downstream module that depends on it is enabled.
+    """
+    tl = config.timeline
+    n = tl.periods
+    result = AssemblyResult(
+        project_name=config.project_name,
+        periods=n,
+        start_year=tl.start_year,
+        start_month=tl.start_month,
+    )
+    out = result.outputs
+
+    # ------------------------------------------------------------------
+    # Step 1: WACC_001 (no dependencies — scalar outputs)
+    # ------------------------------------------------------------------
+    if config.wacc is not None:
+        out["WACC_001"] = WACC_001.calculate(config.wacc)
+
+    # ------------------------------------------------------------------
+    # Step 2: REV_001 — PV revenue (no dependencies)
+    # ------------------------------------------------------------------
+    if config.rev_pv is not None:
+        out["REV_001"] = REV_001.calculate(_inject_timeline(config.rev_pv, tl))
+
+    # ------------------------------------------------------------------
+    # Step 3: REV_002 — BESS revenue (no dependencies)
+    # ------------------------------------------------------------------
+    if config.rev_bess is not None:
+        out["REV_002"] = REV_002.calculate(_inject_timeline(config.rev_bess, tl))
+
+    # ------------------------------------------------------------------
+    # Step 4: REV_003 — Wind revenue (no dependencies)
+    # ------------------------------------------------------------------
+    if config.rev_wind is not None:
+        out["REV_003"] = REV_003.calculate(_inject_timeline(config.rev_wind, tl))
+
+    # ------------------------------------------------------------------
+    # Step 5: OPEX_001 — PV OPEX (no dependencies)
+    # ------------------------------------------------------------------
+    if config.opex_pv is not None:
+        out["OPEX_001"] = OPEX_001.calculate(_inject_timeline(config.opex_pv, tl))
+
+    # ------------------------------------------------------------------
+    # Step 6: OPEX_002 — BESS OPEX (no dependencies)
+    # ------------------------------------------------------------------
+    if config.opex_bess is not None:
+        out["OPEX_002"] = OPEX_002.calculate(_inject_timeline(config.opex_bess, tl))
+
+    # ------------------------------------------------------------------
+    # Step 7: OPEX_003 — Wind OPEX (no dependencies)
+    # ------------------------------------------------------------------
+    if config.opex_wind is not None:
+        out["OPEX_003"] = OPEX_003.calculate(_inject_timeline(config.opex_wind, tl))
+
+    # ------------------------------------------------------------------
+    # Step 6: CAPEX_001 — capital expenditure (no dependencies)
+    # ------------------------------------------------------------------
+    if config.capex is not None:
+        out["CAPEX_001"] = CAPEX_001.calculate(_inject_timeline(config.capex, tl))
+
+    # ------------------------------------------------------------------
+    # Step 7: DEBT_001 — debt schedule (no dependencies)
+    # ------------------------------------------------------------------
+    if config.debt is not None:
+        out["DEBT_001"] = DEBT_001.calculate(_inject_timeline(config.debt, tl))
+
+    # ------------------------------------------------------------------
+    # Step 8: TAX_001 — tax (wired: ebitda from rev-opex, interest from debt)
+    # ------------------------------------------------------------------
+    if config.tax is not None:
+        debt_out = out.get("DEBT_001")  # None if DEBT_001 not run; interest defaults to zeros
+
+        # Combined net revenue (gross_revenue - costs) from PV + BESS + Wind
+        rev_pv_net    = out["REV_001"].net_revenue  if "REV_001"  in out else None
+        rev_bess_net  = out["REV_002"].net_revenue  if "REV_002"  in out else None
+        rev_wind_net  = out["REV_003"].net_revenue  if "REV_003"  in out else None
+        opex_pv_tot   = out["OPEX_001"].total_opex  if "OPEX_001" in out else None
+        opex_bess_tot = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
+        opex_wind_tot = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
+
+        # EBITDA = combined net revenue - additional OPEX
+        gross_rev = _add_series(rev_pv_net, rev_bess_net, rev_wind_net, n=n)
+        total_opex_combined = _add_series(opex_pv_tot, opex_bess_tot, opex_wind_tot, n=n)
+        ebitda_series = [gross_rev[p] - total_opex_combined[p] for p in range(n)]
+
+        # Interest from DEBT_001
+        interest_series = debt_out.interest if debt_out else _zeros(n)
+
+        # capex_by_bucket: use user-supplied or auto-fill bucket 0 from CAPEX_001
+        if config.tax.capex_by_bucket is not None:
+            capex_by_bucket = config.tax.capex_by_bucket
+        elif "CAPEX_001" in out:
+            capex_monthly = out["CAPEX_001"].total_capex_monthly
+            capex_by_bucket = [capex_monthly, _zeros(n), _zeros(n), _zeros(n)]
+        else:
+            capex_by_bucket = [_zeros(n), _zeros(n), _zeros(n), _zeros(n)]
+            result.warnings.append(
+                "TAX_001: no CAPEX_001 output and no capex_by_bucket provided — "
+                "using zero capex for all depreciation buckets."
+            )
+
+        tax_inputs = TAX_001.Inputs(
+            country=config.tax.country,
+            periods=n,
+            start_year=tl.start_year,
+            start_month=tl.start_month,
+            ebitda=ebitda_series,
+            total_interest=interest_series,
+            capex_by_bucket=capex_by_bucket,
+            opening_balances=config.tax.opening_balances,
+        )
+        out["TAX_001"] = TAX_001.calculate(tax_inputs)
+
+    # ------------------------------------------------------------------
+    # Step 9: PL_001 — P&L (fully wired)
+    # ------------------------------------------------------------------
+    if any(k in out for k in ("TAX_001", "DEBT_001", "REV_001", "REV_002", "REV_003")):
+        rev_pv_net    = out["REV_001"].net_revenue  if "REV_001"  in out else None
+        rev_bess_net  = out["REV_002"].net_revenue  if "REV_002"  in out else None
+        rev_wind_net  = out["REV_003"].net_revenue  if "REV_003"  in out else None
+        opex_pv_tot   = out["OPEX_001"].total_opex  if "OPEX_001" in out else None
+        opex_bess_tot = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
+        opex_wind_tot = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
+        tax_out = out.get("TAX_001")
+        debt_out = out.get("DEBT_001")
+
+        gross_rev = _add_series(rev_pv_net, rev_bess_net, rev_wind_net, n=n)
+        total_opex_combined = _add_series(opex_pv_tot, opex_bess_tot, opex_wind_tot, n=n)
+        dep = tax_out.tax_depreciation if tax_out else _zeros(n)
+        interest = debt_out.interest if debt_out else _zeros(n)
+        tax_charge = tax_out.tax_charge_accrued if tax_out else _zeros(n)
+
+        pl_inputs = PL_001.Inputs(
+            periods=n,
+            start_year=tl.start_year,
+            start_month=tl.start_month,
+            gross_revenue=gross_rev,
+            total_opex=total_opex_combined,
+            depreciation=dep,
+            interest_expense=interest,
+            tax_charge=tax_charge,
+        )
+        out["PL_001"] = PL_001.calculate(pl_inputs)
+
+    # ------------------------------------------------------------------
+    # Step 10: CF_001 — cash flow (fully wired)
+    # ------------------------------------------------------------------
+    if "PL_001" in out:
+        pl_out = out["PL_001"]
+        tax_out = out.get("TAX_001")
+        debt_out = out.get("DEBT_001")
+        capex_out = out.get("CAPEX_001")
+        sc = config.statements
+
+        cf_inputs = CF_001.Inputs(
+            periods=n,
+            start_year=tl.start_year,
+            start_month=tl.start_month,
+            opening_cash_DKKk=sc.opening_cash_DKKk,
+            net_income=pl_out.net_income,
+            depreciation=tax_out.tax_depreciation if tax_out else _zeros(n),
+            working_capital_change=sc.working_capital_change or [],
+            capex_monthly=capex_out.total_capex_monthly if capex_out else _zeros(n),
+            debt_drawdown=debt_out.drawdown if debt_out else [],
+            principal_repayment=debt_out.principal if debt_out else [],
+            interest_paid=debt_out.interest if debt_out else _zeros(n),
+            dividends_paid=sc.dividends_paid or [],
+        )
+        out["CF_001"] = CF_001.calculate(cf_inputs)
+
+    # ------------------------------------------------------------------
+    # Step 11: BS_001 — balance sheet (fully wired)
+    # ------------------------------------------------------------------
+    if "CF_001" in out:
+        cf_out = out["CF_001"]
+        pl_out = out["PL_001"]
+        tax_out = out.get("TAX_001")
+        debt_out = out.get("DEBT_001")
+        capex_out = out.get("CAPEX_001")
+        sc = config.statements
+
+        bs_kwargs: dict = dict(
+            periods=n,
+            start_year=tl.start_year,
+            start_month=tl.start_month,
+            opening_contributed_equity_DKKk=sc.opening_contributed_equity_DKKk,
+            opening_retained_earnings_DKKk=sc.opening_retained_earnings_DKKk,
+            capex_monthly=capex_out.total_capex_monthly if capex_out else _zeros(n),
+            depreciation_monthly=tax_out.tax_depreciation if tax_out else _zeros(n),
+            closing_cash=cf_out.closing_cash,
+            debt_closing_balance=debt_out.closing_balance if debt_out else _zeros(n),
+            net_income=pl_out.net_income,
+        )
+        if sc.dividends_paid:
+            bs_kwargs["dividends_paid"] = sc.dividends_paid
+        out["BS_001"] = BS_001.calculate(BS_001.Inputs(**bs_kwargs))
+
+    # ------------------------------------------------------------------
+    # Step 12: IRR_001 — DCF valuation (fully wired)
+    # ------------------------------------------------------------------
+    if "CF_001" in out:
+        cf_out = out["CF_001"]
+        wacc_out = out.get("WACC_001")
+        sc = config.statements
+
+        pfcf = [cf_out.cfo[p] + cf_out.cfi[p] for p in range(n)]
+        ecf  = cf_out.net_cash_flow
+
+        proj_rate = (
+            sc.project_discount_rate if sc.project_discount_rate is not None
+            else (wacc_out.wacc if wacc_out else 0.07)
+        )
+        eq_rate = (
+            sc.equity_discount_rate if sc.equity_discount_rate is not None
+            else (wacc_out.blended_cost_of_equity if wacc_out else 0.10)
+        )
+
+        irr_inputs = IRR_001.Inputs(
+            periods=n,
+            project_free_cash_flow=pfcf,
+            equity_cash_flow=ecf,
+            project_discount_rate=proj_rate,
+            equity_discount_rate=eq_rate,
+        )
+        out["IRR_001"] = IRR_001.calculate(irr_inputs)
+
+    return result

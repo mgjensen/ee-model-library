@@ -157,4 +157,5 @@ def get_excel_formulas(refs: dict) -> dict:
         "ppa_coe":      f"={r['rf']}+{r['levered_beta']}*{r['ppa_erp']}",
         "merchant_coe": f"={r['rf']}+{r['levered_beta']}*{r['merchant_erp']}",
         "blended_coe":  f"={r['ppa_share']}*{r['ppa_coe']}+(1-{r['ppa_share']})*{r['merchant_coe']}",
-        "wacc":         f"=({r['equity']}/({r['debt']}+{r['equity']}))*{r['blended_coe']}+({r['debt']}/({r['debt']}+{r['equity']}))*{r['cost_of_
+        "wacc":         f"=({r['equity']}/({r['debt']}+{r['equity']}))*{r['blended_coe']}+({r['debt']}/({r['debt']}+{r['equity']}))*{r['cost_of_debt']}",
+    }

@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "market": "Germany",
+    "currency": "EUR",
+    "last_updated": "2026-03",
+    "sources": ["Bundesnetzagentur", "Deutsche Bundesbank", "EE internal benchmarks"]
+  },
+  "cost_of_capital": {
+    "tax_rate": 0.30,
+    "cost_of_debt_posttax": 0.032,
+    "capital_structure_debt": 0.75,
+    "capital_structure_equity": 0.25,
+    "unlevered_beta": 0.44,
+    "risk_free_rate": 0.027,
+    "country_risk_premium": 0.00,
+    "corporate_risk_margin": 0.008,
+    "erp": 0.051,
+    "ppa_erp_reduction_factor": 0.90,
+    "merchant_erp_multiplier": 1.0
+  },
+  "pv_assumptions": {
+    "p50_yield_mwh_per_mwp": 1020,
+    "degradation_per_year": 0.0025,
+    "typical_dc_ac_ratio": 1.30,
+    "availability_factor": 0.98
+  },
+  "wind_assumptions": {
+    "p50_yield_mwh_per_mw": 2200,
+    "availability_factor": 0.97,
+    "wake_loss_factor": 0.95
+  },
+  "capex": {
+    "pv_eur_per_mwp": 530000,
+    "wind_eur_per_mw": 1350000,
+    "note": "Estimated — flag for update from live projects"
+  },
+  "opex": {
+    "pv_eur_per_mwp_per_year": 8000,
+    "wind_eur_per_mw_per_year": 45000,
+    "annual_escalation": 0.025,
+    "note": "Estimated — flag for update from live projects"
+  },
+  "debt": {
+    "typical_tenor_years": 18,
+    "typical_interest_rate": 0.042,
+    "typical_gearing": 0.75
+  },
+  "tax": {
+    "tax_rate": 0.30,
+    "depreciation_rate": 0.20,
+    "note": "German corporate tax + solidarity surcharge; depreciation: straight-line over 20 years (simplified)"
+  }
+}
