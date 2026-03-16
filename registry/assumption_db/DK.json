@@ -1,1 +1,41 @@
-{}
+{
+  "_meta": {
+    "market": "Denmark",
+    "currency": "EUR",
+    "last_updated": "2026-03",
+    "sources": ["Danish Energy Agency", "Energinet", "EE internal benchmarks"]
+  },
+  "cost_of_capital": {
+    "tax_rate": 0.22,
+    "cost_of_debt_posttax": 0.035,
+    "capital_structure_debt": 0.80,
+    "capital_structure_equity": 0.20,
+    "unlevered_beta": 0.46,
+    "risk_free_rate": 0.026,
+    "country_risk_premium": 0.00,
+    "corporate_risk_margin": 0.010,
+    "erp": 0.053,
+    "ppa_erp_reduction_factor": 0.90,
+    "merchant_erp_multiplier": 1.0
+  },
+  "pv_assumptions": {
+    "p50_yield_mwh_per_mwp": 1050,
+    "degradation_per_year": 0.0025,
+    "typical_dc_ac_ratio": 1.25,
+    "availability_factor": 0.98
+  },
+  "capex": {
+    "pv_eur_per_mwp": 550000,
+    "note": "Estimated — flag for update from live projects"
+  },
+  "opex": {
+    "base_eur_per_mwp_per_year": 8500,
+    "annual_escalation": 0.025,
+    "note": "Estimated — flag for update from live projects"
+  },
+  "debt": {
+    "typical_tenor_years": 20,
+    "typical_interest_rate": 0.045,
+    "typical_gearing": 0.80
+  }
+}
