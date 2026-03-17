@@ -263,5 +263,53 @@
     "technologies": ["*"],
     "path": "assembly/perspectives.py",
     "type": "utility"
+  },
+  "CASH_SWEEP_001": {
+    "module_id": "CASH_SWEEP_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["*"],
+    "technologies": ["*"],
+    "path": "modules/debt/CASH_SWEEP_001.py"
+  },
+  "TAX_LT_001": {
+    "module_id": "TAX_LT_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["LT"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/tax/TAX_LT_001.py"
+  },
+  "BRIDGE_FACILITY_001": {
+    "module_id": "BRIDGE_FACILITY_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["*"],
+    "technologies": ["*"],
+    "path": "modules/debt/BRIDGE_FACILITY_001.py"
+  },
+  "MRA_001": {
+    "module_id": "MRA_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["*"],
+    "technologies": ["*"],
+    "path": "modules/debt/MRA_001.py"
+  },
+  "DECOM_PROVISION_001": {
+    "module_id": "DECOM_PROVISION_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["*"],
+    "technologies": ["BESS", "WIND", "*"],
+    "path": "modules/costs/DECOM_PROVISION_001.py"
+  },
+  "IMBALANCE_FEE_001": {
+    "module_id": "IMBALANCE_FEE_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["LT", "*"],
+    "technologies": ["PV", "WIND", "*"],
+    "path": "modules/costs/IMBALANCE_FEE_001.py"
   }
 }

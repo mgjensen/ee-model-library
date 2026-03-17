@@ -57,6 +57,12 @@ import modules.statements.IRR_001 as IRR_001
 import modules.statements.VALUATION_001 as VALUATION_001
 import modules.statements.BREAKEVEN_001 as BREAKEVEN_001
 import modules.debt.REPOW_DEBT_001 as REPOW_DEBT_001
+import modules.debt.CASH_SWEEP_001 as CASH_SWEEP_001
+import modules.debt.BRIDGE_FACILITY_001 as BRIDGE_FACILITY_001
+import modules.debt.MRA_001 as MRA_001
+import modules.costs.DECOM_PROVISION_001 as DECOM_PROVISION_001
+import modules.costs.IMBALANCE_FEE_001 as IMBALANCE_FEE_001
+import modules.tax.TAX_LT_001 as TAX_LT_001
 import modules.statements.WORKING_CAPITAL_001 as WORKING_CAPITAL_001
 import modules.statements.SOURCES_USES_001 as SOURCES_USES_001
 import modules.revenue.PPA_CFD_001 as PPA_CFD_001
@@ -73,6 +79,7 @@ class TimelineConfig(BaseModel):
     periods: int = Field(..., gt=0, description="Total project life in months")
     start_year: int = Field(..., description="Calendar year of period 0")
     start_month: int = Field(..., ge=1, le=12, description="Calendar month (1-12) of period 0")
+    currency: str = Field("DKK", description="Project currency: DKK, EUR, USD, AUD")
 
 
 class TaxConfig(BaseModel):
@@ -161,6 +168,12 @@ class ProjectConfig(BaseModel):
     dsra: Optional[DSRA_001.Inputs] = None  # DSRA_001
     ppa_cfd:  Optional[PPA_CFD_001.Inputs] = None  # PPA_CFD_001
     repow_debt: Optional[REPOW_DEBT_001.Inputs] = None  # REPOW_DEBT_001
+    bridge: Optional[BRIDGE_FACILITY_001.Inputs] = None  # BRIDGE_FACILITY_001
+    cash_sweep_module: Optional[CASH_SWEEP_001.Inputs] = None  # CASH_SWEEP_001
+    mra: Optional[MRA_001.Inputs] = None  # MRA_001
+    decom: Optional[DECOM_PROVISION_001.Inputs] = None  # DECOM_PROVISION_001
+    imbalance_fee: Optional[IMBALANCE_FEE_001.Inputs] = None  # IMBALANCE_FEE_001
+    tax_lt: Optional[TAX_LT_001.Inputs] = None  # TAX_LT_001
     tax:      Optional[TaxConfig]        = None   # TAX_001
     tax_de:   Optional[TAX_DE_001.Inputs] = None  # TAX_DE_001
     working_capital: Optional[WORKING_CAPITAL_001.Inputs] = None  # WORKING_CAPITAL_001
@@ -407,6 +420,44 @@ def run(config: ProjectConfig) -> AssemblyResult:
         out["DSRA_001"] = DSRA_001.calculate(_inject_timeline(dsra_inp, tl))
 
     # ------------------------------------------------------------------
+    # Step 9b: BRIDGE_FACILITY_001 — short-term bridge loan
+    # ------------------------------------------------------------------
+    if config.bridge is not None:
+        out["BRIDGE_FACILITY_001"] = BRIDGE_FACILITY_001.calculate(
+            _inject_timeline(config.bridge, tl)
+        )
+
+    # ------------------------------------------------------------------
+    # Step 9g: MRA_001 — maintenance reserve account
+    # ------------------------------------------------------------------
+    if config.mra is not None:
+        out["MRA_001"] = MRA_001.calculate(_inject_timeline(config.mra, tl))
+
+    # ------------------------------------------------------------------
+    # Step 9h: DECOM_PROVISION_001 — decommissioning provision
+    # ------------------------------------------------------------------
+    if config.decom is not None:
+        out["DECOM_PROVISION_001"] = DECOM_PROVISION_001.calculate(
+            _inject_timeline(config.decom, tl)
+        )
+
+    # ------------------------------------------------------------------
+    # Step 9i: CASH_SWEEP_001 — excess cash sweep to debt
+    # ------------------------------------------------------------------
+    if config.cash_sweep_module is not None:
+        out["CASH_SWEEP_001"] = CASH_SWEEP_001.calculate(
+            _inject_timeline(config.cash_sweep_module, tl)
+        )
+
+    # ------------------------------------------------------------------
+    # Step 9j: IMBALANCE_FEE_001 — polluter pays imbalance fee
+    # ------------------------------------------------------------------
+    if config.imbalance_fee is not None:
+        out["IMBALANCE_FEE_001"] = IMBALANCE_FEE_001.calculate(
+            _inject_timeline(config.imbalance_fee, tl)
+        )
+
+    # ------------------------------------------------------------------
     # Step 8: TAX_001 — tax (wired: ebitda from rev-opex, interest from debt)
     # ------------------------------------------------------------------
     if config.tax is not None:
@@ -468,6 +519,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
             "start_month": tl.start_month,
         })
         out["TAX_DE_001"] = TAX_DE_001.calculate(tax_de_inp)
+
+    # ------------------------------------------------------------------
+    # Step 10c: TAX_LT_001 — Lithuanian tax
+    # ------------------------------------------------------------------
+    if config.tax_lt is not None:
+        out["TAX_LT_001"] = TAX_LT_001.calculate(
+            _inject_timeline(config.tax_lt, tl)
+        )
 
     # ------------------------------------------------------------------
     # Step 9: PL_001 — P&L (fully wired)

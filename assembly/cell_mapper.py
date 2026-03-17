@@ -64,6 +64,12 @@ MODULE_SHEET: dict[str, str] = {
     "REPOW_DEBT_001": "Debt",
     "VALUATION_001": "Statements",
     "BREAKEVEN_001": "Statements",
+    "CASH_SWEEP_001": "Debt",
+    "BRIDGE_FACILITY_001": "Debt",
+    "MRA_001": "Debt",
+    "TAX_LT_001": "Debt",
+    "DECOM_PROVISION_001": "Costs",
+    "IMBALANCE_FEE_001": "Costs",
 }
 
 # Modules whose outputs go to the Summary sheet (scalars only)
@@ -377,6 +383,30 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
     ("Debt", "REPOW_DEBT_001", "closing_balance"):  103,
     ("Debt", "REPOW_DEBT_001", "debt_service"):     104,
     ("Debt", "REPOW_DEBT_001", "arrangement_fee"):  105,
+
+    # ---- Debt sheet — CASH_SWEEP_001 (rows 107–108) --------------------------
+    ("Debt", "CASH_SWEEP_001", "cash_swept"):        107,
+    ("Debt", "CASH_SWEEP_001", "cash_after_sweep"):  108,
+
+    # ---- Debt sheet — BRIDGE_FACILITY_001 (rows 110–111) ---------------------
+    ("Debt", "BRIDGE_FACILITY_001", "bridge_interest"):  110,
+    ("Debt", "BRIDGE_FACILITY_001", "bridge_closing"):   111,
+
+    # ---- Debt sheet — MRA_001 (rows 113–114) ---------------------------------
+    ("Debt", "MRA_001", "balance"):  113,
+    ("Debt", "MRA_001", "funding"):  114,
+
+    # ---- Debt sheet — TAX_LT_001 (rows 116–118) -----------------------------
+    ("Debt", "TAX_LT_001", "tax_charge_accrued"):      116,
+    ("Debt", "TAX_LT_001", "deferred_tax_asset"):      117,
+    ("Debt", "TAX_LT_001", "deferred_tax_liability"):  118,
+
+    # ---- Costs sheet — DECOM_PROVISION_001 (rows 52–53) ----------------------
+    ("Costs", "DECOM_PROVISION_001", "provision_balance"):  52,
+    ("Costs", "DECOM_PROVISION_001", "fund_balance"):       53,
+
+    # ---- Costs sheet — IMBALANCE_FEE_001 (row 55) ---------------------------
+    ("Costs", "IMBALANCE_FEE_001", "imbalance_fee_monthly"):  55,
 }
 
 
@@ -573,6 +603,18 @@ FIELD_LABELS: dict[str, str] = {
     "ev":                      "Enterprise Value",
     # BREAKEVEN_001
     "breakeven_price_monthly": "Breakeven Price (DKK/MWh)",
+    # CASH_SWEEP_001
+    "cash_swept":       "Cash Swept to Debt",
+    "cash_after_sweep": "Cash After Sweep",
+    # BRIDGE_FACILITY_001
+    "bridge_interest":  "Bridge Interest",
+    "bridge_closing":   "Bridge Closing Balance",
+    # MRA_001
+    "fund_contribution": "MRA Contribution",
+    # DECOM_PROVISION_001
+    "provision_balance": "Decommissioning Provision",
+    # IMBALANCE_FEE_001
+    "imbalance_fee_monthly": "Imbalance Fee",
     "project_irr":     "Project IRR",
     "equity_irr":      "Equity IRR",
     "project_npv":     "Project NPV",
