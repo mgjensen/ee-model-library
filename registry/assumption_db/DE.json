@@ -48,6 +48,18 @@
   "tax": {
     "tax_rate": 0.30,
     "depreciation_rate": 0.20,
-    "note": "German corporate tax + solidarity surcharge; depreciation: straight-line over 20 years (simplified)"
+    "cit_rate": 0.15,
+    "solidarity_surcharge": 0.055,
+    "vat_rate": 0.19,
+    "ebitda_interest_cap_pct": 0.30,
+    "interest_deduction_threshold_EURk": 3000,
+    "trade_tax_base_rate": 0.035,
+    "trade_tax_default_multiplier": 4.0,
+    "trade_tax_interest_addback_pct": 0.25,
+    "trade_tax_land_lease_addback_pct": 0.50,
+    "trade_tax_allowance_EURk": 24.5,
+    "tax_loss_fixed_threshold_EURk": 1000,
+    "tax_loss_above_threshold_pct": 0.60,
+    "note": "German corporate tax (KStG) + solidarity surcharge + trade tax (GewStG)"
   }
 }

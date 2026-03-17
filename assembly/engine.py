@@ -48,6 +48,7 @@ import modules.debt.DEBT_REFI_001 as DEBT_REFI_001
 import modules.debt.DEBT_LINEAR_001 as DEBT_LINEAR_001
 import modules.debt.DSRA_001 as DSRA_001
 import modules.tax.TAX_001 as TAX_001
+import modules.tax.TAX_DE_001 as TAX_DE_001
 import modules.statements.PL_001 as PL_001
 import modules.statements.CF_001 as CF_001
 import modules.statements.BS_001 as BS_001
@@ -149,6 +150,7 @@ class ProjectConfig(BaseModel):
     vat_facility: Optional[VAT_FACILITY_001.Inputs] = None  # VAT_FACILITY_001
     dsra: Optional[DSRA_001.Inputs] = None  # DSRA_001
     tax:      Optional[TaxConfig]        = None   # TAX_001
+    tax_de:   Optional[TAX_DE_001.Inputs] = None  # TAX_DE_001
     statements: StatementConfig = Field(default_factory=StatementConfig)
 
 
@@ -413,6 +415,19 @@ def run(config: ProjectConfig) -> AssemblyResult:
         out["TAX_001"] = TAX_001.calculate(tax_inputs)
 
     # ------------------------------------------------------------------
+    # Step 10b: TAX_DE_001 — German dual-layer tax (alternative to TAX_001)
+    # ------------------------------------------------------------------
+    if config.tax_de is not None:
+        tax_de_inp = config.tax_de
+        # Auto-wire ebitda and interest if not fully populated
+        tax_de_inp = tax_de_inp.model_copy(update={
+            "periods": n,
+            "start_year": tl.start_year,
+            "start_month": tl.start_month,
+        })
+        out["TAX_DE_001"] = TAX_DE_001.calculate(tax_de_inp)
+
+    # ------------------------------------------------------------------
     # Step 9: PL_001 — P&L (fully wired)
     # ------------------------------------------------------------------
     if any(k in out for k in ("TAX_001", "DEBT_001", "REV_001", "REV_002", "REV_003")):
@@ -423,11 +438,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
         opex_bess_tot = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
         opex_wind_tot = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
         tax_out = out.get("TAX_001")
+        tax_de_out = out.get("TAX_DE_001")
         debt_out = out.get("DEBT_001")
 
         gross_rev = _add_series(rev_pv_net, rev_bess_net, rev_wind_net, n=n)
         total_opex_combined = _add_series(opex_pv_tot, opex_bess_tot, opex_wind_tot, n=n)
-        dep = tax_out.tax_depreciation if tax_out else _zeros(n)
+        dep = tax_out.tax_depreciation if tax_out else (
+            tax_de_out.tax_depreciation if tax_de_out else _zeros(n)
+        )
         # Add BESS repowering accounting depreciation
         repow_out = out.get("BESS_REPOW_001")
         if repow_out:
@@ -445,7 +463,9 @@ def run(config: ProjectConfig) -> AssemblyResult:
         constr_out = out.get("CONSTR_FINANCE_001")
         if constr_out:
             interest = [interest[p] + constr_out.interest[p] for p in range(n)]
-        tax_charge = tax_out.tax_charge_accrued if tax_out else _zeros(n)
+        tax_charge = tax_out.tax_charge_accrued if tax_out else (
+            tax_de_out.tax_charge_accrued if tax_de_out else _zeros(n)
+        )
 
         pl_inputs = PL_001.Inputs(
             periods=n,

@@ -174,5 +174,13 @@
     "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
     "technologies": ["PV", "BESS", "WIND", "*"],
     "path": "modules/debt/CONSTR_FINANCE_001.py"
+  },
+  "TAX_DE_001": {
+    "module_id": "TAX_DE_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DE"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/tax/TAX_DE_001.py"
   }
 }

@@ -50,6 +50,7 @@ MODULE_SHEET: dict[str, str] = {
     "DEBT_LINEAR_001": "Debt",
     "CONSTR_FINANCE_001": "Debt",
     "TAX_001":   "Debt",
+    "TAX_DE_001": "Debt",
     "PL_001":    "Statements",
     "CF_001":    "Statements",
     "BS_001":    "Statements",
@@ -273,6 +274,15 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
     ("Debt", "TAX_001", "tax_charge_accrued"):        18,
     ("Debt", "TAX_001", "tax_paid"):                  19,
 
+    # ---- Debt sheet — TAX_DE_001 (rows 91–97) ---------------------------------
+    ("Debt", "TAX_DE_001", "tax_depreciation"):        91,
+    ("Debt", "TAX_DE_001", "deductible_interest"):     92,
+    ("Debt", "TAX_DE_001", "non_deductible_interest"): 93,
+    ("Debt", "TAX_DE_001", "corporate_tax_charge"):    94,
+    ("Debt", "TAX_DE_001", "trade_tax_charge"):        95,
+    ("Debt", "TAX_DE_001", "tax_charge_accrued"):      96,
+    ("Debt", "TAX_DE_001", "tax_paid"):                97,
+
     # ---- Debt sheet — WACC_001 scalars (col B, rows 22–30) -----------------
     # These are written to col B only (no time-series). Row numbers are the same
     # convention but the writer uses col 2 (B) instead of the period columns.
@@ -461,6 +471,8 @@ FIELD_LABELS: dict[str, str] = {
     "non_deductible_interest":  "Non-Deductible Interest",
     "tax_charge_accrued":       "Tax Charge (accrued)",
     "tax_paid":                 "Tax Paid",
+    "corporate_tax_charge":     "Corporate Tax (CIT)",
+    "trade_tax_charge":         "Trade Tax (Gewerbesteuer)",
     # WACC_001
     "wacc":                   "WACC",
     "blended_cost_of_equity": "Blended CoE",
