@@ -166,5 +166,13 @@
     "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
     "technologies": ["PV", "BESS", "WIND", "*"],
     "path": "modules/debt/DEBT_LINEAR_001.py"
+  },
+  "CONSTR_FINANCE_001": {
+    "module_id": "CONSTR_FINANCE_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/debt/CONSTR_FINANCE_001.py"
   }
 }

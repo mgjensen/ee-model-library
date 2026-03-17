@@ -39,6 +39,7 @@ import modules.costs.OPEX_002 as OPEX_002
 import modules.costs.OPEX_003 as OPEX_003
 import modules.capex.CAPEX_001 as CAPEX_001
 import modules.capex.BESS_REPOW_001 as BESS_REPOW_001
+import modules.debt.CONSTR_FINANCE_001 as CONSTR_FINANCE_001
 import modules.debt.DEBT_001 as DEBT_001
 import modules.debt.DEBT_SCULPT_001 as DEBT_SCULPT_001
 import modules.debt.SHL_001 as SHL_001
@@ -139,6 +140,7 @@ class ProjectConfig(BaseModel):
     opex_wind: Optional[OPEX_003.Inputs] = None   # OPEX_003
     capex:    Optional[CAPEX_001.Inputs] = None   # CAPEX_001
     bess_repow: Optional[BESS_REPOW_001.Inputs] = None  # BESS_REPOW_001
+    constr_finance: Optional[CONSTR_FINANCE_001.Inputs] = None  # CONSTR_FINANCE_001
     debt:     Optional[DEBT_001.Inputs]  = None   # DEBT_001
     debt_sculpt: Optional[DEBT_SCULPT_001.Inputs] = None  # DEBT_SCULPT_001
     debt_refi: Optional[DEBT_REFI_001.Inputs] = None  # DEBT_REFI_001
@@ -272,6 +274,20 @@ def run(config: ProjectConfig) -> AssemblyResult:
     if config.bess_repow is not None:
         out["BESS_REPOW_001"] = BESS_REPOW_001.calculate(
             _inject_timeline(config.bess_repow, tl)
+        )
+
+    # ------------------------------------------------------------------
+    # Step 9a: CONSTR_FINANCE_001 — construction finance (wired from CAPEX_001)
+    # ------------------------------------------------------------------
+    if config.constr_finance is not None:
+        cf_inp = config.constr_finance
+        # Auto-wire capex_monthly from CAPEX_001 if not provided
+        if "CAPEX_001" in out and (not cf_inp.capex_monthly or all(c == 0 for c in cf_inp.capex_monthly)):
+            cf_inp = cf_inp.model_copy(update={
+                "capex_monthly": out["CAPEX_001"].total_capex_monthly,
+            })
+        out["CONSTR_FINANCE_001"] = CONSTR_FINANCE_001.calculate(
+            _inject_timeline(cf_inp, tl)
         )
 
     # ------------------------------------------------------------------
@@ -425,6 +441,10 @@ def run(config: ProjectConfig) -> AssemblyResult:
         linear_out = out.get("DEBT_LINEAR_001")
         if linear_out:
             interest = [interest[p] + linear_out.total_interest[p] for p in range(n)]
+        # Add construction finance interest
+        constr_out = out.get("CONSTR_FINANCE_001")
+        if constr_out:
+            interest = [interest[p] + constr_out.interest[p] for p in range(n)]
         tax_charge = tax_out.tax_charge_accrued if tax_out else _zeros(n)
 
         pl_inputs = PL_001.Inputs(
@@ -470,6 +490,11 @@ def run(config: ProjectConfig) -> AssemblyResult:
             cf_draw = _add_series(cf_draw or None, linear_out.total_drawdown, n=n)
             cf_princ = _add_series(cf_princ or None, linear_out.total_principal, n=n)
             cf_int = [cf_int[p] + linear_out.total_interest[p] for p in range(n)]
+        constr_out = out.get("CONSTR_FINANCE_001")
+        if constr_out:
+            cf_draw = _add_series(cf_draw or None, constr_out.drawdown, n=n)
+            cf_princ = _add_series(cf_princ or None, constr_out.repayment, n=n)
+            cf_int = [cf_int[p] + constr_out.interest[p] for p in range(n)]
 
         cf_inputs = CF_001.Inputs(
             periods=n,
@@ -518,6 +543,7 @@ def run(config: ProjectConfig) -> AssemblyResult:
                 debt_out.closing_balance if debt_out else None,
                 out["DEBT_REFI_001"].closing_balance if "DEBT_REFI_001" in out else None,
                 out["DEBT_LINEAR_001"].total_closing_balance if "DEBT_LINEAR_001" in out else None,
+                out["CONSTR_FINANCE_001"].closing_balance if "CONSTR_FINANCE_001" in out else None,
                 n=n,
             ),
             net_income=pl_out.net_income,
