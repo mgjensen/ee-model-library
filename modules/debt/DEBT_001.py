@@ -35,6 +35,15 @@ from typing import Optional
 # SUB-MODELS
 # ============================================================================
 
+class MarginStep(BaseModel):
+    """One step in a time-varying margin schedule."""
+    margin: float = Field(..., description="Annual margin for this period")
+    until_year: int = Field(
+        ..., description="Calendar year (inclusive) at which this step ends. "
+        "Last step applies through end of tenor."
+    )
+
+
 class DSCRStream(BaseModel):
     """Per-revenue-stream DSCR target for sculpted repayment."""
     name: str = Field(..., description="Stream identifier, e.g. 'pv_contracted'")
@@ -55,6 +64,16 @@ class Inputs(BaseModel):
     all_in_rate: float = Field(..., gt=0, description="Annual all-in interest rate (margin + fees)")
     repayment_type: str = Field("annuity", description="annuity | straight_line | bullet | sculpted")
     tenor_months: int = Field(..., gt=0, description="Repayment period length in months")
+
+    # Time-varying margin (optional — overrides all_in_rate when set)
+    base_rate: Optional[float] = Field(
+        None, description="Annual base/reference rate (e.g. CIBOR swap). "
+        "Required when margin_schedule is set."
+    )
+    margin_schedule: Optional[list[MarginStep]] = Field(
+        None, description="Margin step-ups: list of MarginStep(margin, until_year). "
+        "Steps must be in chronological order. Last step applies through end of tenor."
+    )
 
     # Drawdown schedule — monthly amounts, length = periods, must sum to <= facility
     drawdowns: list[float] = Field(..., description="Monthly drawdown amounts DKKk")
@@ -110,6 +129,20 @@ class Inputs(BaseModel):
             raise ValueError(f"Unknown repayment_type: {self.repayment_type!r}")
         if self.cfads is not None and len(self.cfads) != n:
             raise ValueError(f"cfads length {len(self.cfads)} != periods {n}")
+        # Margin schedule validation
+        if self.margin_schedule is not None:
+            if self.base_rate is None:
+                raise ValueError("margin_schedule requires base_rate")
+            if len(self.margin_schedule) == 0:
+                raise ValueError("margin_schedule must not be empty")
+            prev_year = -1
+            for i, step in enumerate(self.margin_schedule):
+                if step.until_year <= prev_year:
+                    raise ValueError(
+                        f"margin_schedule[{i}].until_year={step.until_year} "
+                        f"must be > previous until_year={prev_year}"
+                    )
+                prev_year = step.until_year
         # Sculpted-specific validation
         if self.repayment_type == "sculpted":
             if not self.sculpted_dscr_streams:
@@ -179,6 +212,32 @@ def _annuity_payment(balance: float, monthly_rate: float, n: int) -> float:
     return balance * monthly_rate / (1.0 - (1.0 + monthly_rate) ** -n)
 
 
+def _monthly_rates(inputs: Inputs) -> list[float]:
+    """
+    Build per-period monthly interest rate array.
+
+    If margin_schedule is set, each period's rate = (base_rate + margin) / 12,
+    where margin comes from the step whose until_year >= the period's calendar year.
+    Otherwise, flat rate = all_in_rate / 12 for all periods.
+    """
+    n = inputs.periods
+    if inputs.margin_schedule is None:
+        return [inputs.all_in_rate / 12.0] * n
+
+    rates = [0.0] * n
+    for p in range(n):
+        offset = inputs.start_month - 1 + p
+        year = inputs.start_year + offset // 12
+        # Find the applicable margin step
+        margin = inputs.margin_schedule[-1].margin  # default: last step
+        for step in inputs.margin_schedule:
+            if year <= step.until_year:
+                margin = step.margin
+                break
+        rates[p] = (inputs.base_rate + margin) / 12.0
+    return rates
+
+
 # ============================================================================
 # SCULPTED HELPERS
 # ============================================================================
@@ -226,7 +285,7 @@ def _run_sculpted_pass(
       5. Actual forward pass with drawdowns and principal
     """
     n = inputs.periods
-    r = inputs.all_in_rate / 12.0
+    rates = _monthly_rates(inputs)
     draws = [d * scale for d in inputs.drawdowns]
     rep_end = rep_start + inputs.tenor_months
 
@@ -234,7 +293,7 @@ def _run_sculpted_pass(
     interest_est = [0.0] * n
     bal = 0.0
     for p in range(n):
-        interest_est[p] = bal * r
+        interest_est[p] = bal * rates[p]
         bal += draws[p]
 
     # Compute annual principal targets
@@ -266,7 +325,7 @@ def _run_sculpted_pass(
     balance = 0.0
     for p in range(n):
         opening[p] = balance
-        interest[p] = balance * r
+        interest[p] = balance * rates[p]
 
         if rep_start <= p < rep_end and balance > 1e-9:
             principal[p] = min(monthly_princ_by_year[p_to_year[p]], balance)
@@ -333,7 +392,8 @@ def calculate_schedule(inputs: Inputs) -> Outputs:
       (interest is paid from cash, never capitalised)
     """
     n = inputs.periods
-    r = inputs.all_in_rate / 12.0
+    rates = _monthly_rates(inputs)
+    r = inputs.all_in_rate / 12.0  # flat rate for annuity PMT formula
     yg = _year_groups(n, inputs.start_year, inputs.start_month)
 
     rep_start = inputs.repayment_start_period
@@ -445,7 +505,7 @@ def calculate_schedule(inputs: Inputs) -> Outputs:
 
     for p in range(n):
         opening_arr[p] = balance
-        interest_arr[p] = balance * r
+        interest_arr[p] = balance * rates[p]
 
         if p < rep_start or balance < 1e-9:
             princ = 0.0

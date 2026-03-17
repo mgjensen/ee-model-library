@@ -1,9 +1,19 @@
 """
-Tests for DEBT_001 GAP 3: Cash sweep mandatory prepayment.
+Tests for DEBT_001 new features:
+  - Margin step-ups (GAP 1)
+  - Cash sweep (GAP 3)
 """
 
+import math
 import pytest
-from modules.debt.DEBT_001 import Inputs, Outputs, calculate, DSCRStream
+from modules.debt.DEBT_001 import (
+    DSCRStream,
+    MarginStep,
+    Inputs,
+    Outputs,
+    calculate,
+    _monthly_rates,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -13,6 +23,171 @@ from modules.debt.DEBT_001 import Inputs, Outputs, calculate, DSCRStream
 def _even_drawdowns(facility, n_draw, total_periods):
     d = [facility / n_draw] * n_draw + [0.0] * (total_periods - n_draw)
     return d
+
+
+# ---------------------------------------------------------------------------
+# GAP 1: Margin step-ups
+# ---------------------------------------------------------------------------
+
+class TestMarginStepUps:
+
+    def test_flat_rate_backward_compat(self):
+        """No margin_schedule -> flat rate everywhere."""
+        inp = Inputs(
+            facility=100_000.0,
+            all_in_rate=0.05,
+            repayment_type="straight_line",
+            tenor_months=120,
+            drawdowns=_even_drawdowns(100_000, 12, 180),
+            periods=180,
+            start_year=2026,
+            start_month=1,
+        )
+        rates = _monthly_rates(inp)
+        assert all(r == pytest.approx(0.05 / 12) for r in rates)
+
+    def test_single_step_matches_flat(self):
+        """One margin step covering everything = same as flat base+margin."""
+        inp = Inputs(
+            facility=100_000.0,
+            all_in_rate=0.05,  # still required but overridden
+            base_rate=0.02,
+            margin_schedule=[MarginStep(margin=0.03, until_year=2050)],
+            repayment_type="straight_line",
+            tenor_months=120,
+            drawdowns=_even_drawdowns(100_000, 12, 180),
+            periods=180,
+            start_year=2026,
+            start_month=1,
+        )
+        rates = _monthly_rates(inp)
+        assert all(r == pytest.approx(0.05 / 12) for r in rates)
+
+    def test_three_step_holsted(self):
+        """Holsted Hybrid: 2.3% -> 2.0% -> 1.5% with base ~0.768%."""
+        base = 0.00768
+        inp = Inputs(
+            facility=100_000.0,
+            all_in_rate=0.05,  # fallback
+            base_rate=base,
+            margin_schedule=[
+                MarginStep(margin=0.023, until_year=2036),
+                MarginStep(margin=0.020, until_year=2041),
+                MarginStep(margin=0.015, until_year=2060),
+            ],
+            repayment_type="straight_line",
+            tenor_months=120,
+            drawdowns=_even_drawdowns(100_000, 12, 240),
+            periods=240,
+            start_year=2026,
+            start_month=1,
+        )
+        rates = _monthly_rates(inp)
+        # Period 0 = Jan 2026 -> year 2026 <= 2036 -> margin 2.3%
+        assert rates[0] == pytest.approx((base + 0.023) / 12)
+        # Period 120 = Jan 2036 -> year 2036 <= 2036 -> margin 2.3%
+        assert rates[120] == pytest.approx((base + 0.023) / 12)
+        # Period 132 = Jan 2037 -> year 2037 <= 2041 -> margin 2.0%
+        assert rates[132] == pytest.approx((base + 0.020) / 12)
+        # Period 192 = Jan 2042 -> year 2042 <= 2060 -> margin 1.5%
+        assert rates[192] == pytest.approx((base + 0.015) / 12)
+
+    def test_step_up_changes_total_interest(self):
+        """Higher margins -> more interest vs flat rate."""
+        base_inp = Inputs(
+            facility=100_000.0,
+            all_in_rate=0.05,
+            repayment_type="straight_line",
+            tenor_months=120,
+            drawdowns=_even_drawdowns(100_000, 12, 180),
+            periods=180,
+            start_year=2026,
+            start_month=1,
+        )
+        stepped_inp = base_inp.model_copy(update={
+            "base_rate": 0.02,
+            "margin_schedule": [
+                MarginStep(margin=0.04, until_year=2031),  # higher early
+                MarginStep(margin=0.02, until_year=2060),  # lower late
+            ],
+        })
+        out_flat = calculate(base_inp)
+        out_stepped = calculate(stepped_inp)
+        # The stepped version has higher early interest
+        assert out_stepped.total_interest != pytest.approx(out_flat.total_interest, abs=100)
+
+    def test_validation_margin_without_base_rate(self):
+        with pytest.raises(ValueError, match="margin_schedule requires base_rate"):
+            Inputs(
+                facility=100_000.0,
+                all_in_rate=0.05,
+                margin_schedule=[MarginStep(margin=0.02, until_year=2030)],
+                repayment_type="straight_line",
+                tenor_months=120,
+                drawdowns=_even_drawdowns(100_000, 12, 180),
+                periods=180,
+                start_year=2026,
+                start_month=1,
+            )
+
+    def test_validation_empty_margin_schedule(self):
+        with pytest.raises(ValueError, match="margin_schedule must not be empty"):
+            Inputs(
+                facility=100_000.0,
+                all_in_rate=0.05,
+                base_rate=0.02,
+                margin_schedule=[],
+                repayment_type="straight_line",
+                tenor_months=120,
+                drawdowns=_even_drawdowns(100_000, 12, 180),
+                periods=180,
+                start_year=2026,
+                start_month=1,
+            )
+
+    def test_validation_non_chronological_steps(self):
+        with pytest.raises(ValueError, match="must be > previous"):
+            Inputs(
+                facility=100_000.0,
+                all_in_rate=0.05,
+                base_rate=0.02,
+                margin_schedule=[
+                    MarginStep(margin=0.02, until_year=2035),
+                    MarginStep(margin=0.03, until_year=2030),  # backward
+                ],
+                repayment_type="straight_line",
+                tenor_months=120,
+                drawdowns=_even_drawdowns(100_000, 12, 180),
+                periods=180,
+                start_year=2026,
+                start_month=1,
+            )
+
+    def test_margin_step_works_with_sculpted(self):
+        """Margin steps should work with sculpted debt too."""
+        n = 180
+        cfads = [0.0] * 12 + [2000.0] * 168
+        inp = Inputs(
+            facility=100_000.0,
+            all_in_rate=0.05,
+            base_rate=0.02,
+            margin_schedule=[
+                MarginStep(margin=0.025, until_year=2035),
+                MarginStep(margin=0.020, until_year=2060),
+            ],
+            repayment_type="sculpted",
+            tenor_months=168,
+            drawdowns=_even_drawdowns(100_000, 12, n),
+            periods=n,
+            start_year=2026,
+            start_month=1,
+            sculpted_dscr_streams=[
+                DSCRStream(name="pv", target_dscr=1.4, cfads=cfads),
+            ],
+        )
+        out = calculate(inp)
+        assert out.sized_facility > 0
+        assert out.total_interest > 0
 
 
 # ---------------------------------------------------------------------------
