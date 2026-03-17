@@ -28,7 +28,7 @@ import math
 from typing import Any
 
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, numbers
+from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
 from assembly.cell_mapper import (
