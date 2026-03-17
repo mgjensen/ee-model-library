@@ -230,5 +230,29 @@
     "markets": ["*"],
     "technologies": ["*"],
     "path": "modules/reporting/DASHBOARD_001.py"
+  },
+  "REPOW_DEBT_001": {
+    "module_id": "REPOW_DEBT_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["*"],
+    "technologies": ["BESS", "*"],
+    "path": "modules/debt/REPOW_DEBT_001.py"
+  },
+  "VALUATION_001": {
+    "module_id": "VALUATION_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["*"],
+    "technologies": ["*"],
+    "path": "modules/statements/VALUATION_001.py"
+  },
+  "BREAKEVEN_001": {
+    "module_id": "BREAKEVEN_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["*"],
+    "technologies": ["*"],
+    "path": "modules/statements/BREAKEVEN_001.py"
   }
 }

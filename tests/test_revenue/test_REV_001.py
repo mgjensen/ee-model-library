@@ -528,3 +528,67 @@ def test_get_excel_formulas_keys():
     ):
         assert key in formulas
         assert formulas[key].startswith("=")
+
+
+# ---------------------------------------------------------------------------
+# External mode
+# ---------------------------------------------------------------------------
+
+def test_external_mode_returns_external_values():
+    """External mode passes through external curves as net revenue."""
+    n = 12
+    ppa = [100.0] * n
+    grid = [200.0] * n
+    goo = [50.0] * n
+    prod = [5_000.0] * n
+    inp = Inputs(
+        periods=n,
+        start_year=2025,
+        start_month=1,
+        inflation_rate=0.0,
+        net_production_MWh=[0.0] * n,
+        wholesale_price_DKK_per_MWh=[0.0] * n,
+        capture_price_DKK_per_MWh=[0.0] * n,
+        goo_price_DKK_per_MWh=[0.0] * n,
+        external_mode=True,
+        external_pv_to_ppa_DKKk=ppa,
+        external_pv_to_grid_DKKk=grid,
+        external_goo_DKKk=goo,
+        external_production_MWh=prod,
+    )
+    out = calculate(inp)
+    assert isinstance(out, Outputs)
+    assert len(out.net_revenue) == n
+    for p in range(n):
+        assert out.net_revenue[p] == pytest.approx(350.0)  # 100+200+50
+        assert out.gross_revenue[p] == pytest.approx(350.0)
+        assert out.net_production_MWh[p] == pytest.approx(5_000.0)
+        assert out.total_costs[p] == pytest.approx(0.0)
+    assert out.total_net_revenue == pytest.approx(350.0 * n)
+
+
+def test_external_mode_false_unchanged():
+    """When external_mode=False, external fields are ignored and normal calc runs."""
+    out = calculate(_flat_inputs(production=1_000.0, capture=400.0, inflation_rate=0.0))
+    expected_spot = 1_000.0 * 400.0 / 1000.0
+    assert all(v == pytest.approx(expected_spot) for v in out.spot_revenue)
+    # Confirm external fields default empty and don't interfere
+    inp = _flat_inputs(production=1_000.0, capture=400.0, inflation_rate=0.0)
+    assert inp.external_mode is False
+    assert inp.external_pv_to_ppa_DKKk == []
+
+
+def test_external_mode_validation():
+    """External mode validates that non-empty external arrays match periods."""
+    with pytest.raises(ValueError, match="external_pv_to_ppa_DKKk"):
+        Inputs(
+            periods=12,
+            start_year=2025,
+            start_month=1,
+            net_production_MWh=[0.0] * 12,
+            wholesale_price_DKK_per_MWh=[0.0] * 12,
+            capture_price_DKK_per_MWh=[0.0] * 12,
+            goo_price_DKK_per_MWh=[0.0] * 12,
+            external_mode=True,
+            external_pv_to_ppa_DKKk=[1.0] * 10,  # wrong length
+        )

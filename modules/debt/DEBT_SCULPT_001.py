@@ -141,6 +141,12 @@ class Outputs(BaseModel):
     llcr_series: list[float]          # per-period LLCR (NaN outside repayment)
     pv_cfads: list[float]             # PV of remaining CFADS from each period
 
+    # DSCR lookback
+    dscr_6m_lookback: list[float]     # 6-month backward-looking DSCR
+    dscr_12m_lookback: list[float]    # 12-month backward-looking DSCR
+    min_dscr_6m: float                # minimum 6m lookback during repayment
+    min_dscr_12m: float               # minimum 12m lookback during repayment
+
     # Summary
     total_debt: float          # sized facility DKKk
     gearing: float             # total_debt / total_capex
@@ -435,6 +441,28 @@ def calculate(inputs: Inputs) -> Outputs:
     llcr_vals = [v for v in llcr_series if not math.isnan(v)]
     min_llcr = min(llcr_vals) if llcr_vals else float("nan")
 
+    # DSCR lookback windows
+    dscr_6m = [float("nan")] * n
+    dscr_12m = [float("nan")] * n
+    for p in range(n):
+        if opening[p] < 0.01 or p < cep:
+            continue
+        # 6-month lookback
+        start_6 = max(0, p - 5)
+        sum_cfads_6 = sum(total_cfads[t] for t in range(start_6, p + 1))
+        sum_ds_6 = sum(ds[t] for t in range(start_6, p + 1))
+        dscr_6m[p] = sum_cfads_6 / sum_ds_6 if sum_ds_6 > 1e-9 else float("nan")
+        # 12-month lookback
+        start_12 = max(0, p - 11)
+        sum_cfads_12 = sum(total_cfads[t] for t in range(start_12, p + 1))
+        sum_ds_12 = sum(ds[t] for t in range(start_12, p + 1))
+        dscr_12m[p] = sum_cfads_12 / sum_ds_12 if sum_ds_12 > 1e-9 else float("nan")
+
+    dscr_6m_vals = [v for v in dscr_6m if not math.isnan(v)]
+    dscr_12m_vals = [v for v in dscr_12m if not math.isnan(v)]
+    min_dscr_6m = min(dscr_6m_vals) if dscr_6m_vals else float("nan")
+    min_dscr_12m = min(dscr_12m_vals) if dscr_12m_vals else float("nan")
+
     gearing = facility / inputs.total_capex_DKKk if inputs.total_capex_DKKk > 0 else 0.0
 
     return Outputs(
@@ -450,6 +478,10 @@ def calculate(inputs: Inputs) -> Outputs:
         dscr_achieved=dscr_monthly,
         llcr_series=llcr_series,
         pv_cfads=pv_cfads_arr,
+        dscr_6m_lookback=dscr_6m,
+        dscr_12m_lookback=dscr_12m,
+        min_dscr_6m=min_dscr_6m,
+        min_dscr_12m=min_dscr_12m,
         total_debt=facility,
         gearing=gearing,
         total_interest=sum(interest_paid),

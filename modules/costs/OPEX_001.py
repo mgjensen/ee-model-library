@@ -36,6 +36,26 @@ class ComponentRate(BaseModel):
     indexation_start_factor: float = Field(1.0, description="Pre-indexation multiplier at period 0")
 
 
+class ContractPeriod(BaseModel):
+    """One O&M or land lease contract period with minimum cost floor."""
+    cost_DKKk_per_unit_annual: float = Field(0.0, ge=0)
+    duration_years: int = Field(1, gt=0)
+    minimum_cost_DKKk_annual: float = Field(0.0, ge=0)
+
+
+class OMConfig(BaseModel):
+    """O&M with up to 7 contract periods, sequential."""
+    periods: list[ContractPeriod] = Field(default_factory=list, max_length=7)
+    unit_count: float = Field(0.0, ge=0, description="Units: MW, ha, etc.")
+
+
+class LandLeaseConfig(BaseModel):
+    """Land lease with up to 6 contract periods, sequential."""
+    periods: list[ContractPeriod] = Field(default_factory=list, max_length=6)
+    escalation_rate: float = Field(0.025)
+    indexation_start_factor: float = Field(1.0)
+
+
 # ============================================================================
 # INPUTS & OUTPUTS
 # ============================================================================
@@ -112,6 +132,11 @@ class Inputs(BaseModel):
 
     # 11. Other (auditor, spare parts) — monthly
     other: ComponentRate
+
+    # Multi-period contract configs (override single-rate if populated)
+    om_config: Optional[OMConfig] = Field(None, description="Multi-period O&M contract")
+    land_lease_rented_config: Optional[LandLeaseConfig] = Field(None, description="Multi-period rented lease")
+    land_lease_owned_config: Optional[LandLeaseConfig] = Field(None, description="Multi-period owned lease")
 
     @model_validator(mode="after")
     def _validate(self):
@@ -195,6 +220,44 @@ def _fixed_component(
     return monthly
 
 
+def _multi_period_component(
+    config: OMConfig | LandLeaseConfig,
+    year_groups: OrderedDict,
+    periods: int,
+    inflation_rate: float,
+    start_year: int,
+) -> list[float]:
+    """Monthly cost from sequential contract periods with min cost floor."""
+    monthly = [0.0] * periods
+    if not config.periods:
+        return monthly
+
+    unit_count = config.unit_count if isinstance(config, OMConfig) else 1.0
+    start_factor = config.indexation_start_factor if isinstance(config, LandLeaseConfig) else 1.0
+    esc_rate = config.escalation_rate if isinstance(config, LandLeaseConfig) else inflation_rate
+
+    # Build a flat list of (contract_period, year_offset) for each year
+    contract_year = 0
+    cp_idx = 0
+    cp_years_used = 0
+    for year, yp in year_groups.items():
+        if cp_idx >= len(config.periods):
+            break
+        cp = config.periods[cp_idx]
+        factor = start_factor * (1 + esc_rate) ** max(0, contract_year)
+        rate_annual = cp.cost_DKKk_per_unit_annual * unit_count * factor
+        min_annual = cp.minimum_cost_DKKk_annual * factor
+        effective = max(rate_annual, min_annual) / 12.0
+        for p in yp:
+            monthly[p] = effective
+        cp_years_used += 1
+        contract_year += 1
+        if cp_years_used >= cp.duration_years:
+            cp_idx += 1
+            cp_years_used = 0
+    return monthly
+
+
 # ============================================================================
 # CORE CALCULATION
 # ============================================================================
@@ -206,7 +269,10 @@ def calculate(inputs: Inputs) -> Outputs:
     n = inputs.periods
 
     # 1. O&M
-    om = _fixed_component(inputs.om, yg, n, ir)
+    if inputs.om_config and inputs.om_config.periods:
+        om = _multi_period_component(inputs.om_config, yg, n, ir, inputs.start_year)
+    else:
+        om = _fixed_component(inputs.om, yg, n, ir)
 
     # 2. Commercial management
     commercial = _fixed_component(inputs.commercial_management, yg, n, ir)
@@ -219,10 +285,16 @@ def calculate(inputs: Inputs) -> Outputs:
     ]
 
     # 4. Land lease — rented
-    ll_rented = _fixed_component(inputs.land_lease_rented, yg, n, ir)
+    if inputs.land_lease_rented_config and inputs.land_lease_rented_config.periods:
+        ll_rented = _multi_period_component(inputs.land_lease_rented_config, yg, n, ir, inputs.start_year)
+    else:
+        ll_rented = _fixed_component(inputs.land_lease_rented, yg, n, ir)
 
     # 5. Land lease — owned
-    ll_owned = _fixed_component(inputs.land_lease_owned, yg, n, ir)
+    if inputs.land_lease_owned_config and inputs.land_lease_owned_config.periods:
+        ll_owned = _multi_period_component(inputs.land_lease_owned_config, yg, n, ir, inputs.start_year)
+    else:
+        ll_owned = _fixed_component(inputs.land_lease_owned, yg, n, ir)
 
     # 6. Lease tax
     lt = _fixed_component(inputs.lease_tax, yg, n, ir)

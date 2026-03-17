@@ -758,3 +758,75 @@ def test_tolling_formula_in_excel():
     formulas = get_excel_formulas(refs)
     assert "tolling_revenue" in formulas
     assert formulas["tolling_revenue"].startswith("=")
+
+
+# ---------------------------------------------------------------------------
+# External mode
+# ---------------------------------------------------------------------------
+
+def test_external_mode_returns_external_values():
+    """External mode passes through external BESS revenue curve."""
+    n = 12
+    ext_rev = [500.0] * n
+    inp = Inputs(
+        periods=n,
+        start_year=2025,
+        start_month=1,
+        inflation_rate=0.0,
+        power_MW=100.0,
+        energy_MWh_installed=400.0,
+        round_trip_efficiency=0.85,
+        discharge_volume_MWh=[0.0] * n,
+        discharge_price_DKK_per_MWh=[0.0] * n,
+        grid_charge_volume_MWh=[0.0] * n,
+        grid_charge_price_DKK_per_MWh=[0.0] * n,
+        pv_charge_volume_MWh=[0.0] * n,
+        pv_charge_price_DKK_per_MWh=[0.0] * n,
+        goo_price_DKK_per_MWh=[0.0] * n,
+        multimarket_pct=[0.0] * n,
+        external_mode=True,
+        external_bess_revenue_DKKk=ext_rev,
+    )
+    out = calculate(inp)
+    assert isinstance(out, Outputs)
+    assert len(out.net_revenue) == n
+    for p in range(n):
+        assert out.net_revenue[p] == pytest.approx(500.0)
+        assert out.gross_revenue[p] == pytest.approx(500.0)
+        assert out.total_costs[p] == pytest.approx(0.0)
+        assert out.discharge_revenue[p] == pytest.approx(0.0)
+    assert out.total_net_revenue == pytest.approx(500.0 * n)
+
+
+def test_external_mode_false_unchanged():
+    """When external_mode=False, normal internal calc runs."""
+    out = calculate(_flat(dis_vol=500.0, dis_price=800.0, inflation_rate=0.0))
+    expected = 500.0 * 800.0 / 1000.0
+    assert all(v == pytest.approx(expected) for v in out.discharge_revenue)
+    # Confirm default
+    inp = _flat()
+    assert inp.external_mode is False
+    assert inp.external_bess_revenue_DKKk == []
+
+
+def test_external_mode_validation():
+    """External mode validates external array length."""
+    with pytest.raises(ValueError, match="external_bess_revenue_DKKk"):
+        Inputs(
+            periods=12,
+            start_year=2025,
+            start_month=1,
+            power_MW=100.0,
+            energy_MWh_installed=400.0,
+            round_trip_efficiency=0.85,
+            discharge_volume_MWh=[0.0] * 12,
+            discharge_price_DKK_per_MWh=[0.0] * 12,
+            grid_charge_volume_MWh=[0.0] * 12,
+            grid_charge_price_DKK_per_MWh=[0.0] * 12,
+            pv_charge_volume_MWh=[0.0] * 12,
+            pv_charge_price_DKK_per_MWh=[0.0] * 12,
+            goo_price_DKK_per_MWh=[0.0] * 12,
+            multimarket_pct=[0.0] * 12,
+            external_mode=True,
+            external_bess_revenue_DKKk=[1.0] * 10,  # wrong length
+        )

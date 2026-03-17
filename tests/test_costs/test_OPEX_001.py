@@ -385,3 +385,75 @@ def test_get_excel_formulas_keys():
                 "self_consumption", "ve_bonus", "guarantee_interest", "total_opex"):
         assert key in formulas
         assert formulas[key].startswith("=")
+
+
+# ---------------------------------------------------------------------------
+# GAP 3: Multi-period O&M contracts
+# ---------------------------------------------------------------------------
+
+def test_om_config_multi_period_stepped_cost():
+    """7-period O&M with varying costs produces correct stepped output."""
+    from modules.costs.OPEX_001 import ContractPeriod, OMConfig
+    om_cfg = OMConfig(
+        periods=[
+            ContractPeriod(cost_DKKk_per_unit_annual=100.0, duration_years=5),
+            ContractPeriod(cost_DKKk_per_unit_annual=150.0, duration_years=5),
+        ],
+        unit_count=10.0,
+    )
+    out = calculate(_base_inputs(
+        periods=120,
+        start_year=2025,
+        start_month=1,
+        om_annual=0.0,
+        inflation_rate=0.0,
+        om_config=om_cfg,
+    ))
+    # First 5 years (periods 0-59): 100 * 10 / 12 = 83.333
+    assert out.om[0] == pytest.approx(100.0 * 10.0 / 12.0, rel=1e-4)
+    assert out.om[59] == pytest.approx(100.0 * 10.0 / 12.0, rel=1e-4)
+    # Years 6-10 (periods 60-119): 150 * 10 / 12 = 125.0
+    assert out.om[60] == pytest.approx(150.0 * 10.0 / 12.0, rel=1e-4)
+    assert out.om[119] == pytest.approx(150.0 * 10.0 / 12.0, rel=1e-4)
+    # Step change: year 6 cost > year 5 cost
+    assert out.om[60] > out.om[59]
+
+
+def test_om_config_minimum_floor_binding():
+    """Minimum cost floor is binding when rate < floor."""
+    from modules.costs.OPEX_001 import ContractPeriod, OMConfig
+    om_cfg = OMConfig(
+        periods=[
+            ContractPeriod(
+                cost_DKKk_per_unit_annual=1.0,
+                duration_years=10,
+                minimum_cost_DKKk_annual=500.0,
+            ),
+        ],
+        unit_count=1.0,
+    )
+    out = calculate(_base_inputs(
+        periods=120,
+        start_year=2025,
+        start_month=1,
+        om_annual=0.0,
+        inflation_rate=0.0,
+        om_config=om_cfg,
+    ))
+    # rate_annual = 1.0 * 1.0 = 1.0, min = 500.0 → effective = 500/12
+    for p in range(12):
+        assert out.om[p] >= 500.0 / 12.0 - 0.01
+
+
+def test_om_config_empty_falls_back():
+    """Empty OMConfig periods list falls back to ComponentRate."""
+    from modules.costs.OPEX_001 import OMConfig
+    om_cfg = OMConfig(periods=[], unit_count=10.0)
+    out = calculate(_base_inputs(
+        periods=24,
+        om_annual=12_000.0,
+        inflation_rate=0.0,
+        om_config=om_cfg,
+    ))
+    # Should use the ComponentRate om=12000 → 1000/month
+    assert all(v == pytest.approx(1_000.0) for v in out.om)

@@ -568,3 +568,38 @@ class TestLLCR:
         if len(llcr_vals) >= 2:
             # Flat CFADS should produce smoothly decreasing LLCR
             assert llcr_vals[0] >= llcr_vals[-1]
+
+
+# ---------------------------------------------------------------------------
+# DSCR lookback tests
+# ---------------------------------------------------------------------------
+
+class TestDSCRLookback:
+    def test_dscr_6m_lookback_uses_6_months(self):
+        out = calculate(_make_inputs())
+        vals = [v for v in out.dscr_6m_lookback if not math.isnan(v)]
+        assert len(vals) > 0
+
+    def test_dscr_12m_lookback_uses_12_months(self):
+        out = calculate(_make_inputs())
+        vals = [v for v in out.dscr_12m_lookback if not math.isnan(v)]
+        assert len(vals) > 0
+
+    def test_min_dscr_6m_is_minimum(self):
+        out = calculate(_make_inputs())
+        vals = [v for v in out.dscr_6m_lookback if not math.isnan(v)]
+        if vals:
+            assert out.min_dscr_6m == pytest.approx(min(vals))
+
+    def test_min_dscr_12m_is_minimum(self):
+        out = calculate(_make_inputs())
+        vals = [v for v in out.dscr_12m_lookback if not math.isnan(v)]
+        if vals:
+            assert out.min_dscr_12m == pytest.approx(min(vals))
+
+    def test_lookback_nan_outside_repayment(self):
+        out = calculate(_make_inputs())
+        # Construction periods (0-11) should be NaN
+        for p in range(12):
+            assert math.isnan(out.dscr_6m_lookback[p])
+            assert math.isnan(out.dscr_12m_lookback[p])

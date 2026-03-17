@@ -115,9 +115,31 @@ class Inputs(BaseModel):
     tolling_inflation_rate: float = Field(0.025, ge=0, description="Annual inflation for tolling fee")
     tolling_inflation_start_year: int = Field(2025, description="Year from which tolling inflation compounds")
 
+    # External curve pass-through mode
+    external_mode: bool = Field(False, description="If True, use external BESS revenue curve instead of internal calc")
+    external_bess_revenue_DKKk: list[float] = Field(default_factory=list)
+
     @model_validator(mode="after")
     def _validate(self):
         n = self.periods
+        if self.external_mode:
+            if self.external_bess_revenue_DKKk and len(self.external_bess_revenue_DKKk) != n:
+                raise ValueError(
+                    f"external_bess_revenue_DKKk length "
+                    f"{len(self.external_bess_revenue_DKKk)} != periods {n}"
+                )
+            # Still validate tolling if active
+            if self.tolling_active:
+                if self.tolling_end_period >= n:
+                    raise ValueError(
+                        f"tolling_end_period {self.tolling_end_period} >= periods {n}"
+                    )
+                if self.tolling_start_period > self.tolling_end_period:
+                    raise ValueError(
+                        f"tolling_start_period {self.tolling_start_period} > "
+                        f"tolling_end_period {self.tolling_end_period}"
+                    )
+            return self
         time_series = {
             "discharge_volume_MWh": self.discharge_volume_MWh,
             "discharge_price_DKK_per_MWh": self.discharge_price_DKK_per_MWh,
@@ -324,6 +346,59 @@ def calculate(inputs: Inputs) -> Outputs:
     n = inputs.periods
     yg = _year_groups(n, inputs.start_year, inputs.start_month)
     ir = inputs.inflation_rate
+
+    if inputs.external_mode:
+        ext_rev = inputs.external_bess_revenue_DKKk or [0.0] * n
+        zeros = [0.0] * n
+
+        # Compute tolling on top of external revenue if active
+        tolling_rev = [0.0] * n
+        if inputs.tolling_active and inputs.tolling_contracted_mw > 0:
+            annual_fee = inputs.tolling_contracted_mw * inputs.tolling_price_DKK_per_mw_per_year
+            for year, year_periods in yg.items():
+                factor = _indexation_factor(
+                    year, inputs.tolling_inflation_start_year, 1.0, inputs.tolling_inflation_rate
+                )
+                monthly_fee = annual_fee * factor / 12.0 / 1000.0
+                for p in year_periods:
+                    if inputs.tolling_start_period <= p <= inputs.tolling_end_period:
+                        tolling_rev[p] = monthly_fee
+
+        gross = [ext_rev[p] + tolling_rev[p] for p in range(n)]
+        annual_net = [sum(gross[p] for p in plist) for plist in yg.values()]
+        return Outputs(
+            discharge_volume=zeros[:],
+            discharge_indexation_factor=[1.0] * n,
+            discharge_price_inflated=zeros[:],
+            discharge_revenue=zeros[:],
+            charge_indexation_factor=[1.0] * n,
+            grid_charge_price_inflated=zeros[:],
+            pv_charge_price_inflated=zeros[:],
+            grid_charging_cost=zeros[:],
+            pv_charging_cost=zeros[:],
+            total_charging_cost=zeros[:],
+            feed_in_tariff_cost=zeros[:],
+            net_loss_tariff_cost=zeros[:],
+            system_tariff_cost=zeros[:],
+            grid_import_fee=zeros[:],
+            total_import_production_costs=zeros[:],
+            tso_export_cost=zeros[:],
+            dso_export_cost=zeros[:],
+            nordpool_export_cost=zeros[:],
+            total_export_production_costs=zeros[:],
+            goo_lost_volume=zeros[:],
+            goo_revenue_lost=zeros[:],
+            export_tariff_addback=zeros[:],
+            total_system_adjustments=zeros[:],
+            bess_net_ex_multimarket=ext_rev,
+            multimarket_revenue=zeros[:],
+            tolling_revenue=tolling_rev,
+            gross_revenue=gross,
+            total_costs=zeros[:],
+            net_revenue=gross,
+            annual_net_revenue=annual_net,
+            total_net_revenue=sum(gross),
+        )
 
     # --- A. Discharge revenue ---
     dis_factor = _factor_series(

@@ -54,6 +54,9 @@ import modules.statements.PL_001 as PL_001
 import modules.statements.CF_001 as CF_001
 import modules.statements.BS_001 as BS_001
 import modules.statements.IRR_001 as IRR_001
+import modules.statements.VALUATION_001 as VALUATION_001
+import modules.statements.BREAKEVEN_001 as BREAKEVEN_001
+import modules.debt.REPOW_DEBT_001 as REPOW_DEBT_001
 import modules.statements.WORKING_CAPITAL_001 as WORKING_CAPITAL_001
 import modules.statements.SOURCES_USES_001 as SOURCES_USES_001
 import modules.revenue.PPA_CFD_001 as PPA_CFD_001
@@ -157,10 +160,13 @@ class ProjectConfig(BaseModel):
     vat_facility: Optional[VAT_FACILITY_001.Inputs] = None  # VAT_FACILITY_001
     dsra: Optional[DSRA_001.Inputs] = None  # DSRA_001
     ppa_cfd:  Optional[PPA_CFD_001.Inputs] = None  # PPA_CFD_001
+    repow_debt: Optional[REPOW_DEBT_001.Inputs] = None  # REPOW_DEBT_001
     tax:      Optional[TaxConfig]        = None   # TAX_001
     tax_de:   Optional[TAX_DE_001.Inputs] = None  # TAX_DE_001
     working_capital: Optional[WORKING_CAPITAL_001.Inputs] = None  # WORKING_CAPITAL_001
     sources_uses: Optional[SOURCES_USES_001.Inputs] = None  # SOURCES_USES_001
+    valuation: Optional[VALUATION_001.Inputs] = None  # VALUATION_001
+    breakeven: Optional[BREAKEVEN_001.Inputs] = None  # BREAKEVEN_001
     model_checks: Optional[MODEL_CHECKS_001.Inputs] = None  # MODEL_CHECKS_001
     dashboard: Optional[DASHBOARD_001.Inputs] = None  # DASHBOARD_001
     statements: StatementConfig = Field(default_factory=StatementConfig)
@@ -357,6 +363,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
     if config.debt_linear is not None:
         out["DEBT_LINEAR_001"] = DEBT_LINEAR_001.calculate(
             _inject_timeline(config.debt_linear, tl)
+        )
+
+    # ------------------------------------------------------------------
+    # Step 9e: REPOW_DEBT_001 — repowering debt facility
+    # ------------------------------------------------------------------
+    if config.repow_debt is not None:
+        out["REPOW_DEBT_001"] = REPOW_DEBT_001.calculate(
+            _inject_timeline(config.repow_debt, tl)
         )
 
     # ------------------------------------------------------------------
@@ -650,6 +664,20 @@ def run(config: ProjectConfig) -> AssemblyResult:
     # ------------------------------------------------------------------
     if config.dashboard is not None:
         out["DASHBOARD_001"] = DASHBOARD_001.calculate(config.dashboard)
+
+    # ------------------------------------------------------------------
+    # Step 14.7: VALUATION_001 — EV bridge / purchase price
+    # ------------------------------------------------------------------
+    if config.valuation is not None:
+        out["VALUATION_001"] = VALUATION_001.calculate(config.valuation)
+
+    # ------------------------------------------------------------------
+    # Step 14.8: BREAKEVEN_001 — breakeven price analysis
+    # ------------------------------------------------------------------
+    if config.breakeven is not None:
+        out["BREAKEVEN_001"] = BREAKEVEN_001.calculate(
+            _inject_timeline(config.breakeven, tl)
+        )
 
     # ------------------------------------------------------------------
     # Step 15: MODEL_CHECKS_001 — integrity and commercial checks

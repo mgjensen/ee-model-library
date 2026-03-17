@@ -61,6 +61,9 @@ MODULE_SHEET: dict[str, str] = {
     "SOURCES_USES_001": "Statements",
     "MODEL_CHECKS_001": "Statements",
     "DASHBOARD_001": "Statements",
+    "REPOW_DEBT_001": "Debt",
+    "VALUATION_001": "Statements",
+    "BREAKEVEN_001": "Statements",
 }
 
 # Modules whose outputs go to the Summary sheet (scalars only)
@@ -358,6 +361,21 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
 
     # ---- Statements sheet — SOURCES_USES_001 (rows 54–57) --------------------
     ("Statements", "SOURCES_USES_001", "equity_monthly"):     54,
+
+    # ---- Statements sheet — VALUATION_001 (row 56) ---------------------------
+    ("Statements", "VALUATION_001", "ev"):  56,
+
+    # ---- Statements sheet — BREAKEVEN_001 (row 58) ---------------------------
+    ("Statements", "BREAKEVEN_001", "breakeven_price_monthly"):  58,
+
+    # ---- Debt sheet — REPOW_DEBT_001 (rows 99–105) --------------------------
+    ("Debt", "REPOW_DEBT_001", "opening_balance"):   99,
+    ("Debt", "REPOW_DEBT_001", "drawdown"):         100,
+    ("Debt", "REPOW_DEBT_001", "principal"):        101,
+    ("Debt", "REPOW_DEBT_001", "interest"):         102,
+    ("Debt", "REPOW_DEBT_001", "closing_balance"):  103,
+    ("Debt", "REPOW_DEBT_001", "debt_service"):     104,
+    ("Debt", "REPOW_DEBT_001", "arrangement_fee"):  105,
 }
 
 
@@ -549,6 +567,10 @@ FIELD_LABELS: dict[str, str] = {
     "working_capital_change":  "Working Capital Change",
     # SOURCES_USES_001
     "equity_monthly":          "Equity Disbursement",
+    # VALUATION_001
+    "ev":                      "Enterprise Value",
+    # BREAKEVEN_001
+    "breakeven_price_monthly": "Breakeven Price (DKK/MWh)",
     "project_irr":     "Project IRR",
     "equity_irr":      "Equity IRR",
     "project_npv":     "Project NPV",

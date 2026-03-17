@@ -95,9 +95,26 @@ class Inputs(BaseModel):
     # G — Balancing / imbalance cost
     imbalance_tariff: VariableTariff = Field(default_factory=VariableTariff)
 
+    # External curve pass-through mode
+    external_mode: bool = Field(False, description="If True, use external curves instead of internal calc")
+    external_pv_to_ppa_DKKk: list[float] = Field(default_factory=list)
+    external_pv_to_grid_DKKk: list[float] = Field(default_factory=list)
+    external_goo_DKKk: list[float] = Field(default_factory=list)
+    external_production_MWh: list[float] = Field(default_factory=list)
+
     @model_validator(mode="after")
     def _validate(self):
         n = self.periods
+        if self.external_mode:
+            for name, arr in [
+                ("external_pv_to_ppa_DKKk", self.external_pv_to_ppa_DKKk),
+                ("external_pv_to_grid_DKKk", self.external_pv_to_grid_DKKk),
+                ("external_goo_DKKk", self.external_goo_DKKk),
+                ("external_production_MWh", self.external_production_MWh),
+            ]:
+                if arr and len(arr) != n:
+                    raise ValueError(f"{name} length {len(arr)} != periods {n}")
+            return self
         for name, arr in [
             ("net_production_MWh", self.net_production_MWh),
             ("wholesale_price_DKK_per_MWh", self.wholesale_price_DKK_per_MWh),
@@ -301,6 +318,49 @@ def _calculate_ppa_slot(
 def calculate(inputs: Inputs) -> Outputs:
     """Full PV revenue calculation across sub-sections A–H."""
     n = inputs.periods
+
+    if inputs.external_mode:
+        ppa_rev = inputs.external_pv_to_ppa_DKKk or [0.0] * n
+        grid_rev = inputs.external_pv_to_grid_DKKk or [0.0] * n
+        goo_rev = inputs.external_goo_DKKk or [0.0] * n
+        prod = inputs.external_production_MWh or [0.0] * n
+        gross = [ppa_rev[p] + grid_rev[p] + goo_rev[p] for p in range(n)]
+        zeros = [0.0] * n
+        empty_ppa = PPASlotOutput(
+            contracted_volume=zeros[:], fixed_payment=zeros[:],
+            settlement=zeros[:], net_settlement=zeros[:],
+            capture_compensation=zeros[:], total_revenue=zeros[:],
+        )
+        yg = _year_groups(n, inputs.start_year, inputs.start_month)
+        annual_net = [sum(gross[p] for p in plist) for plist in yg.values()]
+        return Outputs(
+            net_production_MWh=prod,
+            price_indexation_factor=[1.0] * n,
+            wholesale_inflated=zeros[:],
+            capture_inflated=zeros[:],
+            spot_revenue=grid_rev,
+            ppa=[empty_ppa for _ in range(5)],
+            total_ppa_contracted_volume=zeros[:],
+            total_ppa_fixed_payment=zeros[:],
+            total_ppa_settlement=zeros[:],
+            total_ppa_net_settlement=zeros[:],
+            total_ppa_capture_compensation=zeros[:],
+            total_ppa_revenue=ppa_rev,
+            goo_volume=zeros[:],
+            goo_revenue=goo_rev,
+            tso_cost=zeros[:],
+            dso_cost=zeros[:],
+            nordpool_cost=zeros[:],
+            ppa_management_cost=zeros[:],
+            total_production_costs=zeros[:],
+            balancing_cost=zeros[:],
+            gross_revenue=gross,
+            total_costs=zeros[:],
+            net_revenue=gross,
+            annual_net_revenue=annual_net,
+            total_net_revenue=sum(gross),
+        )
+
     yg = _year_groups(n, inputs.start_year, inputs.start_month)
     cal_map = _cal_to_period_map(n, inputs.start_year, inputs.start_month)
     ir = inputs.inflation_rate
