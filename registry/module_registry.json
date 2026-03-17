@@ -254,5 +254,14 @@
     "markets": ["*"],
     "technologies": ["*"],
     "path": "modules/statements/BREAKEVEN_001.py"
+  },
+  "PERSPECTIVES_001": {
+    "module_id": "PERSPECTIVES_001",
+    "version": "1.0",
+    "tier": "both",
+    "markets": ["*"],
+    "technologies": ["*"],
+    "path": "assembly/perspectives.py",
+    "type": "utility"
   }
 }
