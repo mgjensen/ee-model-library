@@ -22,6 +22,7 @@ Source: EE_MODEL_BUILD_SPEC.md v2.0 §6.2
 from __future__ import annotations
 
 from collections import OrderedDict
+from typing import Self
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -46,12 +47,13 @@ class Inputs(BaseModel):
     start_year: int
     start_month: int = Field(..., ge=1, le=12)
     inflation_rate: float = Field(0.025, description="Annual inflation rate for all components")
+    sensitivity_factor: float = Field(1.0, description="Multiplier for scenario analysis")
 
     # 1. O&M — fixed annual, indexed
-    om: ComponentRate = Field(default_factory=lambda: ComponentRate(annual_DKKk=0.0))
+    om: ComponentRate = Field(default_factory=ComponentRate)
 
     # 2. Insurance — fixed annual, indexed
-    insurance: ComponentRate = Field(default_factory=lambda: ComponentRate(annual_DKKk=0.0))
+    insurance: ComponentRate = Field(default_factory=ComponentRate)
 
     # 3. Trading costs — variable per MWh discharged, indexed
     trading_cost_DKK_per_MWh: float = Field(
@@ -66,10 +68,10 @@ class Inputs(BaseModel):
     )
 
     # 4. Other — fixed annual, indexed
-    other: ComponentRate = Field(default_factory=lambda: ComponentRate(annual_DKKk=0.0))
+    other: ComponentRate = Field(default_factory=ComponentRate)
 
     @model_validator(mode="after")
-    def _validate(self):
+    def _validate(self) -> Self:
         if self.trading_cost_DKK_per_MWh > 0 and len(self.discharge_volume_MWh) != self.periods:
             raise ValueError(
                 f"discharge_volume_MWh length {len(self.discharge_volume_MWh)} != periods {self.periods}"
@@ -182,8 +184,13 @@ def calculate(inputs: Inputs) -> Outputs:
         for p in range(n)
     ]
 
+    # Apply sensitivity factor
+    if inputs.sensitivity_factor != 1.0:
+        sf = inputs.sensitivity_factor
+        total = [v * sf for v in total]
+
     # Annual aggregation
-    annual = [sum(total[p] for p in plist) for plist in yg.values()]
+    annual = [sum((total[p] for p in plist), 0.0) for plist in yg.values()]
 
     return Outputs(
         om=om,

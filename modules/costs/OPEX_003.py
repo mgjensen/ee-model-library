@@ -48,6 +48,7 @@ class Inputs(BaseModel):
     start_year: int
     start_month: int = Field(..., ge=1, le=12)
     inflation_rate: float = Field(0.025, description="Annual inflation rate for all components")
+    sensitivity_factor: float = Field(1.0, description="Multiplier for scenario analysis")
 
     # Capacity
     capacity_mw: float = Field(..., gt=0, description="Installed wind capacity MW")
@@ -161,6 +162,11 @@ def calculate(inputs: Inputs) -> Outputs:
         om[p] + land_lease[p] + insurance[p] + grid_costs[p] + other[p]
         for p in range(n)
     ]
+
+    # Apply sensitivity factor
+    if inputs.sensitivity_factor != 1.0:
+        sf = inputs.sensitivity_factor
+        total = [v * sf for v in total]
 
     annual = [sum(total[p] for p in plist) for plist in yg.values()]
 

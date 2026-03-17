@@ -30,6 +30,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
+import modules.market.PRICE_CURVES_001 as PRICE_CURVES_001
 import modules.core.WACC_001 as WACC_001
 import modules.revenue.REV_001 as REV_001
 import modules.revenue.REV_002 as REV_002
@@ -53,6 +54,11 @@ import modules.statements.PL_001 as PL_001
 import modules.statements.CF_001 as CF_001
 import modules.statements.BS_001 as BS_001
 import modules.statements.IRR_001 as IRR_001
+import modules.statements.WORKING_CAPITAL_001 as WORKING_CAPITAL_001
+import modules.statements.SOURCES_USES_001 as SOURCES_USES_001
+import modules.revenue.PPA_CFD_001 as PPA_CFD_001
+import modules.checks.MODEL_CHECKS_001 as MODEL_CHECKS_001
+import modules.reporting.DASHBOARD_001 as DASHBOARD_001
 
 
 # ============================================================================
@@ -132,6 +138,7 @@ class ProjectConfig(BaseModel):
     timeline: TimelineConfig
 
     # Module configs — None = disabled
+    price_curves: Optional[PRICE_CURVES_001.Inputs] = None  # PRICE_CURVES_001
     wacc:     Optional[WACC_001.Inputs]  = None
     rev_pv:   Optional[REV_001.Inputs]   = None   # REV_001
     rev_bess: Optional[REV_002.Inputs]   = None   # REV_002
@@ -149,8 +156,13 @@ class ProjectConfig(BaseModel):
     shl:      Optional[SHL_001.Inputs]   = None   # SHL_001
     vat_facility: Optional[VAT_FACILITY_001.Inputs] = None  # VAT_FACILITY_001
     dsra: Optional[DSRA_001.Inputs] = None  # DSRA_001
+    ppa_cfd:  Optional[PPA_CFD_001.Inputs] = None  # PPA_CFD_001
     tax:      Optional[TaxConfig]        = None   # TAX_001
     tax_de:   Optional[TAX_DE_001.Inputs] = None  # TAX_DE_001
+    working_capital: Optional[WORKING_CAPITAL_001.Inputs] = None  # WORKING_CAPITAL_001
+    sources_uses: Optional[SOURCES_USES_001.Inputs] = None  # SOURCES_USES_001
+    model_checks: Optional[MODEL_CHECKS_001.Inputs] = None  # MODEL_CHECKS_001
+    dashboard: Optional[DASHBOARD_001.Inputs] = None  # DASHBOARD_001
     statements: StatementConfig = Field(default_factory=StatementConfig)
 
 
@@ -223,6 +235,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
     out = result.outputs
 
     # ------------------------------------------------------------------
+    # Step 0: PRICE_CURVES_001 — market price curves (feeds all modules)
+    # ------------------------------------------------------------------
+    if config.price_curves is not None:
+        out["PRICE_CURVES_001"] = PRICE_CURVES_001.calculate(
+            _inject_timeline(config.price_curves, tl)
+        )
+
+    # ------------------------------------------------------------------
     # Step 1: WACC_001 (no dependencies — scalar outputs)
     # ------------------------------------------------------------------
     if config.wacc is not None:
@@ -245,6 +265,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
     # ------------------------------------------------------------------
     if config.rev_wind is not None:
         out["REV_003"] = REV_003.calculate(_inject_timeline(config.rev_wind, tl))
+
+    # ------------------------------------------------------------------
+    # Step 4.5: PPA_CFD_001 — CfD settlement (no dependencies)
+    # ------------------------------------------------------------------
+    if config.ppa_cfd is not None:
+        out["PPA_CFD_001"] = PPA_CFD_001.calculate(
+            _inject_timeline(config.ppa_cfd, tl)
+        )
 
     # ------------------------------------------------------------------
     # Step 5: OPEX_001 — PV OPEX (no dependencies)
@@ -600,5 +628,35 @@ def run(config: ProjectConfig) -> AssemblyResult:
             equity_discount_rate=eq_rate,
         )
         out["IRR_001"] = IRR_001.calculate(irr_inputs)
+
+    # ------------------------------------------------------------------
+    # Step 13.5: WORKING_CAPITAL_001 — receivables/payables
+    # ------------------------------------------------------------------
+    if config.working_capital is not None:
+        out["WORKING_CAPITAL_001"] = WORKING_CAPITAL_001.calculate(
+            _inject_timeline(config.working_capital, tl)
+        )
+
+    # ------------------------------------------------------------------
+    # Step 13.6: SOURCES_USES_001 — construction S&U waterfall
+    # ------------------------------------------------------------------
+    if config.sources_uses is not None:
+        out["SOURCES_USES_001"] = SOURCES_USES_001.calculate(
+            _inject_timeline(config.sources_uses, tl)
+        )
+
+    # ------------------------------------------------------------------
+    # Step 14.5: DASHBOARD_001 — KPI extraction
+    # ------------------------------------------------------------------
+    if config.dashboard is not None:
+        out["DASHBOARD_001"] = DASHBOARD_001.calculate(config.dashboard)
+
+    # ------------------------------------------------------------------
+    # Step 15: MODEL_CHECKS_001 — integrity and commercial checks
+    # ------------------------------------------------------------------
+    if config.model_checks is not None:
+        out["MODEL_CHECKS_001"] = MODEL_CHECKS_001.calculate(
+            _inject_timeline(config.model_checks, tl)
+        )
 
     return result

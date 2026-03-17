@@ -55,6 +55,12 @@ MODULE_SHEET: dict[str, str] = {
     "CF_001":    "Statements",
     "BS_001":    "Statements",
     "IRR_001":   "Statements",
+    "PRICE_CURVES_001": "Revenue",
+    "WORKING_CAPITAL_001": "Statements",
+    "PPA_CFD_001": "Revenue",
+    "SOURCES_USES_001": "Statements",
+    "MODEL_CHECKS_001": "Statements",
+    "DASHBOARD_001": "Statements",
 }
 
 # Modules whose outputs go to the Summary sheet (scalars only)
@@ -145,6 +151,11 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
     ("Revenue", "REV_003", "gross_revenue"):               80,
     ("Revenue", "REV_003", "total_costs"):                 81,
     ("Revenue", "REV_003", "net_revenue"):                 82,
+
+    # ---- Revenue sheet — PPA_CFD_001 (rows 84–86) ----------------------------
+    ("Revenue", "PPA_CFD_001", "cfd_flag"):              84,
+    ("Revenue", "PPA_CFD_001", "settlement_value"):       85,
+    ("Revenue", "PPA_CFD_001", "strike_price_indexed"):   86,
 
     # ---- Costs sheet — OPEX_001 (rows 5–17) ---------------------------------
     ("Costs", "OPEX_001", "om"):                      6,
@@ -338,6 +349,15 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
 
     # ---- Statements sheet — IRR_001 (row 47 — time-series only) ------------
     ("Statements", "IRR_001", "cumulative_pfcf"):  47,
+
+    # ---- Statements sheet — WORKING_CAPITAL_001 (rows 49–52) -----------------
+    ("Statements", "WORKING_CAPITAL_001", "total_receivables"):       49,
+    ("Statements", "WORKING_CAPITAL_001", "total_payables"):          50,
+    ("Statements", "WORKING_CAPITAL_001", "working_capital_balance"): 51,
+    ("Statements", "WORKING_CAPITAL_001", "working_capital_change"):  52,
+
+    # ---- Statements sheet — SOURCES_USES_001 (rows 54–57) --------------------
+    ("Statements", "SOURCES_USES_001", "equity_monthly"):     54,
 }
 
 
@@ -518,6 +538,17 @@ FIELD_LABELS: dict[str, str] = {
     "imbalance":                "Balance Check (imbalance)",
     # IRR_001
     "cumulative_pfcf": "Cumulative PFCF",
+    # PPA_CFD_001
+    "cfd_flag":               "CfD Active Flag",
+    "settlement_value":       "CfD Settlement",
+    "strike_price_indexed":   "Strike Price (indexed)",
+    # WORKING_CAPITAL_001
+    "total_receivables":       "Total Receivables",
+    "total_payables":          "Total Payables",
+    "working_capital_balance": "Working Capital Balance",
+    "working_capital_change":  "Working Capital Change",
+    # SOURCES_USES_001
+    "equity_monthly":          "Equity Disbursement",
     "project_irr":     "Project IRR",
     "equity_irr":      "Equity IRR",
     "project_npv":     "Project NPV",

@@ -182,5 +182,53 @@
     "markets": ["DE"],
     "technologies": ["PV", "BESS", "WIND", "*"],
     "path": "modules/tax/TAX_DE_001.py"
+  },
+  "PRICE_CURVES_001": {
+    "module_id": "PRICE_CURVES_001",
+    "version": "1.0",
+    "tier": "both",
+    "markets": ["*"],
+    "technologies": ["*"],
+    "path": "modules/market/PRICE_CURVES_001.py"
+  },
+  "WORKING_CAPITAL_001": {
+    "module_id": "WORKING_CAPITAL_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["*"],
+    "technologies": ["*"],
+    "path": "modules/statements/WORKING_CAPITAL_001.py"
+  },
+  "PPA_CFD_001": {
+    "module_id": "PPA_CFD_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["*"],
+    "technologies": ["*"],
+    "path": "modules/revenue/PPA_CFD_001.py"
+  },
+  "SOURCES_USES_001": {
+    "module_id": "SOURCES_USES_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["*"],
+    "technologies": ["*"],
+    "path": "modules/statements/SOURCES_USES_001.py"
+  },
+  "MODEL_CHECKS_001": {
+    "module_id": "MODEL_CHECKS_001",
+    "version": "1.0",
+    "tier": "both",
+    "markets": ["*"],
+    "technologies": ["*"],
+    "path": "modules/checks/MODEL_CHECKS_001.py"
+  },
+  "DASHBOARD_001": {
+    "module_id": "DASHBOARD_001",
+    "version": "1.0",
+    "tier": "both",
+    "markets": ["*"],
+    "technologies": ["*"],
+    "path": "modules/reporting/DASHBOARD_001.py"
   }
 }

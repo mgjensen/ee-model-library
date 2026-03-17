@@ -59,6 +59,9 @@ class Inputs(BaseModel):
     )
     other_DKKk: float = Field(0.0, ge=0, description="Owner's costs & other DKKk")
 
+    # Scenario sensitivity
+    sensitivity_factor: float = Field(1.0, description="Multiplier for scenario analysis")
+
     # BESS repowering (mid-life battery replacement)
     repowering_cost_DKKk: float = Field(0.0, ge=0, description="BESS repowering cost DKKk")
     repowering_period: int = Field(0, ge=0, description="0-based period when repowering starts")
@@ -169,6 +172,11 @@ def calculate(inputs: Inputs) -> Outputs:
 
     cumulative = []
     running = 0.0
+    # Apply sensitivity factor
+    if inputs.sensitivity_factor != 1.0:
+        sf = inputs.sensitivity_factor
+        total_monthly = [v * sf for v in total_monthly]
+
     for v in total_monthly:
         running += v
         cumulative.append(running)
