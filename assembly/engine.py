@@ -44,6 +44,7 @@ import modules.debt.DEBT_SCULPT_001 as DEBT_SCULPT_001
 import modules.debt.SHL_001 as SHL_001
 import modules.debt.VAT_FACILITY_001 as VAT_FACILITY_001
 import modules.debt.DEBT_REFI_001 as DEBT_REFI_001
+import modules.debt.DEBT_LINEAR_001 as DEBT_LINEAR_001
 import modules.debt.DSRA_001 as DSRA_001
 import modules.tax.TAX_001 as TAX_001
 import modules.statements.PL_001 as PL_001
@@ -141,6 +142,7 @@ class ProjectConfig(BaseModel):
     debt:     Optional[DEBT_001.Inputs]  = None   # DEBT_001
     debt_sculpt: Optional[DEBT_SCULPT_001.Inputs] = None  # DEBT_SCULPT_001
     debt_refi: Optional[DEBT_REFI_001.Inputs] = None  # DEBT_REFI_001
+    debt_linear: Optional[DEBT_LINEAR_001.Inputs] = None  # DEBT_LINEAR_001
     shl:      Optional[SHL_001.Inputs]   = None   # SHL_001
     vat_facility: Optional[VAT_FACILITY_001.Inputs] = None  # VAT_FACILITY_001
     dsra: Optional[DSRA_001.Inputs] = None  # DSRA_001
@@ -304,6 +306,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
         )
 
     # ------------------------------------------------------------------
+    # Step 9d: DEBT_LINEAR_001 — multi-facility linear debt
+    # ------------------------------------------------------------------
+    if config.debt_linear is not None:
+        out["DEBT_LINEAR_001"] = DEBT_LINEAR_001.calculate(
+            _inject_timeline(config.debt_linear, tl)
+        )
+
+    # ------------------------------------------------------------------
     # Step 9.5: SHL_001 — shareholder loan (no dependencies)
     # ------------------------------------------------------------------
     if config.shl is not None:
@@ -411,6 +421,10 @@ def run(config: ProjectConfig) -> AssemblyResult:
         refi_out = out.get("DEBT_REFI_001")
         if refi_out:
             interest = [interest[p] + refi_out.interest[p] for p in range(n)]
+        # Add linear debt interest
+        linear_out = out.get("DEBT_LINEAR_001")
+        if linear_out:
+            interest = [interest[p] + linear_out.total_interest[p] for p in range(n)]
         tax_charge = tax_out.tax_charge_accrued if tax_out else _zeros(n)
 
         pl_inputs = PL_001.Inputs(
@@ -451,6 +465,11 @@ def run(config: ProjectConfig) -> AssemblyResult:
             cf_draw = _add_series(cf_draw or None, refi_out.drawdown, n=n)
             cf_princ = _add_series(cf_princ or None, refi_out.principal, n=n)
             cf_int = [cf_int[p] + refi_out.interest[p] for p in range(n)]
+        linear_out = out.get("DEBT_LINEAR_001")
+        if linear_out:
+            cf_draw = _add_series(cf_draw or None, linear_out.total_drawdown, n=n)
+            cf_princ = _add_series(cf_princ or None, linear_out.total_principal, n=n)
+            cf_int = [cf_int[p] + linear_out.total_interest[p] for p in range(n)]
 
         cf_inputs = CF_001.Inputs(
             periods=n,
@@ -498,6 +517,7 @@ def run(config: ProjectConfig) -> AssemblyResult:
             debt_closing_balance=_add_series(
                 debt_out.closing_balance if debt_out else None,
                 out["DEBT_REFI_001"].closing_balance if "DEBT_REFI_001" in out else None,
+                out["DEBT_LINEAR_001"].total_closing_balance if "DEBT_LINEAR_001" in out else None,
                 n=n,
             ),
             net_income=pl_out.net_income,

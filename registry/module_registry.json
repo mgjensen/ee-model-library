@@ -158,5 +158,13 @@
     "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
     "technologies": ["PV", "BESS", "WIND", "*"],
     "path": "modules/debt/DEBT_REFI_001.py"
+  },
+  "DEBT_LINEAR_001": {
+    "module_id": "DEBT_LINEAR_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/debt/DEBT_LINEAR_001.py"
   }
 }
