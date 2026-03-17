@@ -44,6 +44,7 @@ MODULE_SHEET: dict[str, str] = {
     "DEBT_SCULPT_001": "Debt",
     "SHL_001":   "Debt",
     "VAT_FACILITY_001": "Debt",
+    "DSRA_001":  "Debt",
     "TAX_001":   "Debt",
     "PL_001":    "Statements",
     "CF_001":    "Statements",
@@ -197,6 +198,14 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
     ("Debt", "DEBT_SCULPT_001", "closing_balance"):      50,
     ("Debt", "DEBT_SCULPT_001", "debt_service"):         51,
     ("Debt", "DEBT_SCULPT_001", "dscr_achieved"):        52,
+
+    # ---- Debt sheet — DSRA_001 (rows 54–59) ----------------------------------
+    ("Debt", "DSRA_001", "target_balance"):   55,
+    ("Debt", "DSRA_001", "actual_balance"):   56,
+    ("Debt", "DSRA_001", "top_up"):           57,
+    ("Debt", "DSRA_001", "release"):          58,
+    ("Debt", "DSRA_001", "commitment_fee"):   59,
+    ("Debt", "DSRA_001", "net_cash_impact"):  60,
 
     # ---- Debt sheet — VAT_FACILITY_001 (rows 38–42) -------------------------
     ("Debt", "VAT_FACILITY_001", "vat_paid"):            39,
@@ -372,6 +381,13 @@ FIELD_LABELS: dict[str, str] = {
     "commitment_fee_paid":  "Commitment Fee",
     # SHL_001
     "repayment":        "SHL Repayment",
+    # DSRA_001
+    "target_balance":   "DSRA Target Balance",
+    "actual_balance":   "DSRA Actual Balance",
+    "top_up":           "DSRA Top-Up",
+    "release":          "DSRA Release",
+    "commitment_fee":   "DSRF Commitment Fee",
+    "net_cash_impact":  "DSRA Net Cash Impact",
     # TAX_001
     "tax_depreciation":         "Tax Depreciation",
     "deductible_interest":      "Deductible Interest",

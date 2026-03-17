@@ -39,8 +39,10 @@ import modules.costs.OPEX_002 as OPEX_002
 import modules.costs.OPEX_003 as OPEX_003
 import modules.capex.CAPEX_001 as CAPEX_001
 import modules.debt.DEBT_001 as DEBT_001
+import modules.debt.DEBT_SCULPT_001 as DEBT_SCULPT_001
 import modules.debt.SHL_001 as SHL_001
 import modules.debt.VAT_FACILITY_001 as VAT_FACILITY_001
+import modules.debt.DSRA_001 as DSRA_001
 import modules.tax.TAX_001 as TAX_001
 import modules.statements.PL_001 as PL_001
 import modules.statements.CF_001 as CF_001
@@ -134,8 +136,10 @@ class ProjectConfig(BaseModel):
     opex_wind: Optional[OPEX_003.Inputs] = None   # OPEX_003
     capex:    Optional[CAPEX_001.Inputs] = None   # CAPEX_001
     debt:     Optional[DEBT_001.Inputs]  = None   # DEBT_001
+    debt_sculpt: Optional[DEBT_SCULPT_001.Inputs] = None  # DEBT_SCULPT_001
     shl:      Optional[SHL_001.Inputs]   = None   # SHL_001
     vat_facility: Optional[VAT_FACILITY_001.Inputs] = None  # VAT_FACILITY_001
+    dsra: Optional[DSRA_001.Inputs] = None  # DSRA_001
     tax:      Optional[TaxConfig]        = None   # TAX_001
     statements: StatementConfig = Field(default_factory=StatementConfig)
 
@@ -263,6 +267,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
         out["DEBT_001"] = DEBT_001.calculate(_inject_timeline(config.debt, tl))
 
     # ------------------------------------------------------------------
+    # Step 9b: DEBT_SCULPT_001 — sculpted senior debt (alternative to DEBT_001)
+    # ------------------------------------------------------------------
+    if config.debt_sculpt is not None:
+        out["DEBT_SCULPT_001"] = DEBT_SCULPT_001.calculate(
+            _inject_timeline(config.debt_sculpt, tl)
+        )
+
+    # ------------------------------------------------------------------
     # Step 9.5: SHL_001 — shareholder loan (no dependencies)
     # ------------------------------------------------------------------
     if config.shl is not None:
@@ -281,6 +293,19 @@ def run(config: ProjectConfig) -> AssemblyResult:
         out["VAT_FACILITY_001"] = VAT_FACILITY_001.calculate(
             _inject_timeline(vat_inp, tl)
         )
+
+    # ------------------------------------------------------------------
+    # Step 9.7: DSRA_001 — debt service reserve (wired: debt_service from DEBT_001)
+    # ------------------------------------------------------------------
+    if config.dsra is not None:
+        dsra_inp = config.dsra
+        # Auto-wire debt_service from DEBT_001 if not provided
+        debt_out = out.get("DEBT_001")
+        if (not dsra_inp.debt_service or all(d == 0 for d in dsra_inp.debt_service)) and debt_out:
+            dsra_inp = dsra_inp.model_copy(update={
+                "debt_service": debt_out.debt_service,
+            })
+        out["DSRA_001"] = DSRA_001.calculate(_inject_timeline(dsra_inp, tl))
 
     # ------------------------------------------------------------------
     # Step 8: TAX_001 — tax (wired: ebitda from rev-opex, interest from debt)
