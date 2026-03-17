@@ -39,6 +39,8 @@ import modules.costs.OPEX_002 as OPEX_002
 import modules.costs.OPEX_003 as OPEX_003
 import modules.capex.CAPEX_001 as CAPEX_001
 import modules.debt.DEBT_001 as DEBT_001
+import modules.debt.SHL_001 as SHL_001
+import modules.debt.VAT_FACILITY_001 as VAT_FACILITY_001
 import modules.tax.TAX_001 as TAX_001
 import modules.statements.PL_001 as PL_001
 import modules.statements.CF_001 as CF_001
@@ -66,13 +68,13 @@ class TaxConfig(BaseModel):
     capex_by_bucket: Optional[list[list[float]]] = Field(
         None,
         description=(
-            "Monthly capex additions per bucket — 4 lists each length=periods. "
+            "Monthly capex additions per bucket — 4 or 7 lists each length=periods. "
             "None → engine auto-populates bucket 0 from CAPEX_001.total_capex_monthly."
         ),
     )
     opening_balances: list[float] = Field(
-        [0.0, 0.0, 0.0, 0.0],
-        description="Opening tax depreciation basis per bucket DKKk (4 values)"
+        default_factory=lambda: [0.0] * 7,
+        description="Opening tax depreciation basis per bucket DKKk (4 or 7 values)"
     )
 
 
@@ -132,6 +134,8 @@ class ProjectConfig(BaseModel):
     opex_wind: Optional[OPEX_003.Inputs] = None   # OPEX_003
     capex:    Optional[CAPEX_001.Inputs] = None   # CAPEX_001
     debt:     Optional[DEBT_001.Inputs]  = None   # DEBT_001
+    shl:      Optional[SHL_001.Inputs]   = None   # SHL_001
+    vat_facility: Optional[VAT_FACILITY_001.Inputs] = None  # VAT_FACILITY_001
     tax:      Optional[TaxConfig]        = None   # TAX_001
     statements: StatementConfig = Field(default_factory=StatementConfig)
 
@@ -259,6 +263,26 @@ def run(config: ProjectConfig) -> AssemblyResult:
         out["DEBT_001"] = DEBT_001.calculate(_inject_timeline(config.debt, tl))
 
     # ------------------------------------------------------------------
+    # Step 9.5: SHL_001 — shareholder loan (no dependencies)
+    # ------------------------------------------------------------------
+    if config.shl is not None:
+        out["SHL_001"] = SHL_001.calculate(_inject_timeline(config.shl, tl))
+
+    # ------------------------------------------------------------------
+    # Step 9.6: VAT_FACILITY_001 — construction VAT facility
+    # ------------------------------------------------------------------
+    if config.vat_facility is not None:
+        vat_inp = config.vat_facility
+        # Auto-wire capex_monthly from CAPEX_001 if not provided
+        if not vat_inp.capex_monthly and "CAPEX_001" in out:
+            vat_inp = vat_inp.model_copy(update={
+                "capex_monthly": out["CAPEX_001"].total_capex_monthly
+            })
+        out["VAT_FACILITY_001"] = VAT_FACILITY_001.calculate(
+            _inject_timeline(vat_inp, tl)
+        )
+
+    # ------------------------------------------------------------------
     # Step 8: TAX_001 — tax (wired: ebitda from rev-opex, interest from debt)
     # ------------------------------------------------------------------
     if config.tax is not None:
@@ -285,9 +309,9 @@ def run(config: ProjectConfig) -> AssemblyResult:
             capex_by_bucket = config.tax.capex_by_bucket
         elif "CAPEX_001" in out:
             capex_monthly = out["CAPEX_001"].total_capex_monthly
-            capex_by_bucket = [capex_monthly, _zeros(n), _zeros(n), _zeros(n)]
+            capex_by_bucket = [capex_monthly] + [_zeros(n) for _ in range(6)]
         else:
-            capex_by_bucket = [_zeros(n), _zeros(n), _zeros(n), _zeros(n)]
+            capex_by_bucket = [_zeros(n) for _ in range(7)]
             result.warnings.append(
                 "TAX_001: no CAPEX_001 output and no capex_by_bucket provided — "
                 "using zero capex for all depreciation buckets."

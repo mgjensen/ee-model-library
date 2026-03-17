@@ -4,6 +4,8 @@ import pytest
 from modules.tax.TAX_001 import (
     Inputs,
     Outputs,
+    N_BUCKETS,
+    BUCKET_NAMES,
     calculate,
     calculate_declining_balance,
     calculate_ebitda_rule,
@@ -72,22 +74,28 @@ def test_year_groups_single_year():
 # Unit: calculate_declining_balance
 # ---------------------------------------------------------------------------
 
+def _uniform_rates(rate, n=N_BUCKETS):
+    return [rate] * n
+
+
 def test_declining_balance_zero_opening_no_capex():
     yg = _year_groups(24, 2025, 1)
     annual_dep, monthly_dep = calculate_declining_balance(
-        [0.0, 0.0, 0.0, 0.0], [[0.0] * 24 for _ in range(4)], 0.15, yg, 24
+        [0.0] * N_BUCKETS, [[0.0] * 24 for _ in range(N_BUCKETS)],
+        _uniform_rates(0.15), yg, 24
     )
     assert all(d == 0.0 for d in annual_dep)
     assert all(d == 0.0 for d in monthly_dep)
 
 
 def test_declining_balance_single_bucket_year1():
-    """100,000 DKKk opening, 15% rate → 15,000 year-1 dep, 85,000 closing."""
+    """100,000 DKKk opening in bucket 0, 15% rate → 15,000 year-1 dep, 85,000 closing."""
     yg = _year_groups(24, 2025, 1)
+    opening = [100_000.0] + [0.0] * (N_BUCKETS - 1)
     annual_dep, monthly_dep = calculate_declining_balance(
-        [100_000.0, 0.0, 0.0, 0.0],
-        [[0.0] * 24 for _ in range(4)],
-        0.15, yg, 24
+        opening,
+        [[0.0] * 24 for _ in range(N_BUCKETS)],
+        _uniform_rates(0.15), yg, 24
     )
     assert annual_dep[0] == pytest.approx(15_000.0)
     assert annual_dep[1] == pytest.approx(85_000.0 * 0.15)
@@ -95,10 +103,11 @@ def test_declining_balance_single_bucket_year1():
 
 def test_declining_balance_monthly_sum_equals_annual():
     yg = _year_groups(24, 2025, 1)
+    opening = [100_000.0] + [0.0] * (N_BUCKETS - 1)
     annual_dep, monthly_dep = calculate_declining_balance(
-        [100_000.0, 0.0, 0.0, 0.0],
-        [[0.0] * 24 for _ in range(4)],
-        0.15, yg, 24
+        opening,
+        [[0.0] * 24 for _ in range(N_BUCKETS)],
+        _uniform_rates(0.15), yg, 24
     )
     assert sum(monthly_dep[:12]) == pytest.approx(annual_dep[0])
     assert sum(monthly_dep[12:]) == pytest.approx(annual_dep[1])
@@ -107,20 +116,21 @@ def test_declining_balance_monthly_sum_equals_annual():
 def test_declining_balance_capex_increases_basis():
     """Capex of 50,000 in year 1 month 0, opening 0 → dep = 50,000 × 0.15."""
     yg = _year_groups(24, 2025, 1)
-    capex = [[0.0] * 24 for _ in range(4)]
+    capex = [[0.0] * 24 for _ in range(N_BUCKETS)]
     capex[0][0] = 50_000.0
     annual_dep, _ = calculate_declining_balance(
-        [0.0, 0.0, 0.0, 0.0], capex, 0.15, yg, 24
+        [0.0] * N_BUCKETS, capex, _uniform_rates(0.15), yg, 24
     )
     assert annual_dep[0] == pytest.approx(7_500.0)  # 50,000 × 0.15
 
 
-def test_declining_balance_four_buckets():
-    """Verify all 4 buckets contribute."""
+def test_declining_balance_four_buckets_uniform_rate():
+    """Verify first 4 buckets contribute with uniform rate."""
     yg = _year_groups(12, 2025, 1)
-    opening = [10_000.0, 20_000.0, 5_000.0, 1_000.0]
+    opening = [10_000.0, 20_000.0, 5_000.0, 1_000.0] + [0.0] * (N_BUCKETS - 4)
     annual_dep, _ = calculate_declining_balance(
-        opening, [[0.0] * 12 for _ in range(4)], 0.15, yg, 12
+        opening, [[0.0] * 12 for _ in range(N_BUCKETS)],
+        _uniform_rates(0.15), yg, 12
     )
     expected = sum(o * 0.15 for o in opening)
     assert annual_dep[0] == pytest.approx(expected)
@@ -438,6 +448,137 @@ def test_calculate_invalid_country():
             ebitda=[0.0] * 12, total_interest=[0.0] * 12,
             capex_by_bucket=capex, opening_balances=[0.0, 0.0, 0.0, 0.0],
         ))
+
+
+# ---------------------------------------------------------------------------
+# Backward compatibility: 4-bucket inputs padded to 7
+# ---------------------------------------------------------------------------
+
+def test_four_buckets_accepted_and_padded():
+    """4-bucket capex_by_bucket is accepted and padded to 7."""
+    inp = _make_inputs()  # uses 4 buckets
+    assert len(inp.capex_by_bucket) == N_BUCKETS
+    assert len(inp.opening_balances) == N_BUCKETS
+
+
+def test_four_bucket_opening_balances_padded():
+    inp = Inputs(
+        periods=12, start_year=2025, start_month=1,
+        ebitda=[0.0] * 12, total_interest=[0.0] * 12,
+        capex_by_bucket=[[0.0] * 12 for _ in range(4)],
+        opening_balances=[100.0, 200.0, 300.0, 400.0],
+    )
+    assert len(inp.opening_balances) == N_BUCKETS
+    assert inp.opening_balances[:4] == [100.0, 200.0, 300.0, 400.0]
+    assert inp.opening_balances[4:] == [0.0, 0.0, 0.0]
+
+
+def test_seven_buckets_accepted():
+    """Full 7-bucket inputs are accepted without padding."""
+    n = 12
+    inp = Inputs(
+        periods=n, start_year=2025, start_month=1,
+        ebitda=[1000.0] * n, total_interest=[0.0] * n,
+        capex_by_bucket=[[0.0] * n for _ in range(N_BUCKETS)],
+        opening_balances=[0.0] * N_BUCKETS,
+    )
+    assert len(inp.capex_by_bucket) == N_BUCKETS
+
+
+def test_invalid_bucket_count_rejected():
+    """5 or 6 buckets should be rejected."""
+    with pytest.raises(ValueError, match="4 or 7"):
+        Inputs(
+            periods=12, start_year=2025, start_month=1,
+            ebitda=[0.0] * 12, total_interest=[0.0] * 12,
+            capex_by_bucket=[[0.0] * 12 for _ in range(5)],
+        )
+
+
+# ---------------------------------------------------------------------------
+# 7-bucket: per-bucket depreciation rates
+# ---------------------------------------------------------------------------
+
+def test_seven_buckets_different_rates():
+    """Each bucket uses its own rate from depreciation_rates in DK.json."""
+    yg = _year_groups(12, 2025, 1)
+    opening = [100_000.0, 50_000.0, 30_000.0, 20_000.0, 10_000.0, 5_000.0, 15_000.0]
+    rates = [0.25, 0.25, 0.25, 0.25, 0.04, 0.25, 0.25]
+    annual_dep, _ = calculate_declining_balance(
+        opening, [[0.0] * 12 for _ in range(N_BUCKETS)],
+        rates, yg, 12
+    )
+    expected = sum(o * r for o, r in zip(opening, rates))
+    assert annual_dep[0] == pytest.approx(expected)
+
+
+def test_land_bucket_lower_rate():
+    """Bucket 4 (land) at 4% vs others at 25% — land depreciates much slower."""
+    yg = _year_groups(24, 2025, 1)
+    opening = [0.0] * N_BUCKETS
+    opening[0] = 100_000.0  # PV at 25%
+    opening[4] = 100_000.0  # Land at 4%
+    rates = [0.25, 0.25, 0.25, 0.25, 0.04, 0.25, 0.25]
+    annual_dep, _ = calculate_declining_balance(
+        opening, [[0.0] * 24 for _ in range(N_BUCKETS)],
+        rates, yg, 24
+    )
+    # Year 1: PV dep = 25,000; Land dep = 4,000; total = 29,000
+    assert annual_dep[0] == pytest.approx(29_000.0)
+
+
+def test_repowering_bucket_capex_in_year10():
+    """BESS repowering capex in bucket 6 contributes to depreciation."""
+    yg = _year_groups(24, 2025, 1)
+    capex = [[0.0] * 24 for _ in range(N_BUCKETS)]
+    capex[6][12] = 50_000.0  # Repowering in month 12 (year 2)
+    rates = [0.25] * N_BUCKETS
+    annual_dep, _ = calculate_declining_balance(
+        [0.0] * N_BUCKETS, capex, rates, yg, 24
+    )
+    # Year 1: no capex, no dep
+    assert annual_dep[0] == pytest.approx(0.0)
+    # Year 2: 50,000 × 0.25 = 12,500
+    assert annual_dep[1] == pytest.approx(12_500.0)
+
+
+def test_all_seven_buckets_contribute():
+    """Capex in every bucket → all contribute to total depreciation."""
+    yg = _year_groups(12, 2025, 1)
+    capex = [[0.0] * 12 for _ in range(N_BUCKETS)]
+    for b in range(N_BUCKETS):
+        capex[b][0] = 10_000.0
+    rates = [0.25, 0.25, 0.25, 0.25, 0.04, 0.25, 0.25]
+    annual_dep, _ = calculate_declining_balance(
+        [0.0] * N_BUCKETS, capex, rates, yg, 12
+    )
+    # 6 buckets × 10k × 0.25 + 1 bucket × 10k × 0.04 = 15,000 + 400 = 15,400
+    assert annual_dep[0] == pytest.approx(15_400.0)
+
+
+def test_calculate_with_seven_buckets_end_to_end():
+    """Full calculate() with 7-bucket inputs."""
+    n = 24
+    capex = [[0.0] * n for _ in range(N_BUCKETS)]
+    capex[0][0] = 100_000.0  # PV
+    capex[4][0] = 50_000.0   # Land
+    capex[6][12] = 30_000.0  # Repowering
+    inp = Inputs(
+        periods=n, start_year=2025, start_month=1,
+        ebitda=[5_000.0] * n,
+        total_interest=[100.0] * n,
+        capex_by_bucket=capex,
+        opening_balances=[0.0] * N_BUCKETS,
+    )
+    out = calculate(inp)
+    assert isinstance(out, Outputs)
+    assert out.total_tax_depreciation > 0
+    assert len(out.tax_depreciation) == n
+
+
+def test_bucket_names_count():
+    """BUCKET_NAMES should have N_BUCKETS entries."""
+    assert len(BUCKET_NAMES) == N_BUCKETS
 
 
 # ---------------------------------------------------------------------------

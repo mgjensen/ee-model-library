@@ -59,6 +59,11 @@ class Inputs(BaseModel):
     )
     other_DKKk: float = Field(0.0, ge=0, description="Owner's costs & other DKKk")
 
+    # BESS repowering (mid-life battery replacement)
+    repowering_cost_DKKk: float = Field(0.0, ge=0, description="BESS repowering cost DKKk")
+    repowering_period: int = Field(0, ge=0, description="0-based period when repowering starts")
+    repowering_drawdown_months: int = Field(1, ge=1, description="Months to spread repowering cost")
+
     @model_validator(mode="after")
     def _validate(self):
         if len(self.drawdown_profile) != self.construction_periods:
@@ -77,6 +82,13 @@ class Inputs(BaseModel):
                 f"Construction window [{self.construction_start_period}, {end}) "
                 f"extends beyond periods={self.periods}"
             )
+        if self.repowering_cost_DKKk > 0:
+            rep_end = self.repowering_period + self.repowering_drawdown_months
+            if rep_end > self.periods:
+                raise ValueError(
+                    f"Repowering window [{self.repowering_period}, {rep_end}) "
+                    f"extends beyond periods={self.periods}"
+                )
         return self
 
 
@@ -95,6 +107,9 @@ class Outputs(BaseModel):
     # Cumulative capex to end of each period
     cumulative_capex: list[float]
 
+    # BESS repowering (monthly spend, length = periods)
+    repowering: list[float]
+
     # Scalar totals
     total_epc: float
     total_grid_connection: float
@@ -102,6 +117,7 @@ class Outputs(BaseModel):
     total_land: float
     total_contingency: float
     total_other: float
+    total_repowering: float
     total_capex: float
 
 
@@ -138,8 +154,16 @@ def calculate(inputs: Inputs) -> Outputs:
     contingency = _spread(contingency_total)
     other = _spread(inputs.other_DKKk)
 
+    # BESS repowering — spread evenly across repowering window
+    repowering = [0.0] * n
+    if inputs.repowering_cost_DKKk > 0:
+        monthly_rep = inputs.repowering_cost_DKKk / inputs.repowering_drawdown_months
+        for i in range(inputs.repowering_drawdown_months):
+            repowering[inputs.repowering_period + i] = monthly_rep
+
     total_monthly = [
         epc[p] + grid[p] + dev[p] + land[p] + contingency[p] + other[p]
+        + repowering[p]
         for p in range(n)
     ]
 
@@ -158,6 +182,7 @@ def calculate(inputs: Inputs) -> Outputs:
         land=land,
         contingency=contingency,
         other=other,
+        repowering=repowering,
         total_capex_monthly=total_monthly,
         cumulative_capex=cumulative,
         total_epc=inputs.epc_DKKk,
@@ -166,6 +191,7 @@ def calculate(inputs: Inputs) -> Outputs:
         total_land=inputs.land_DKKk,
         total_contingency=contingency_total,
         total_other=inputs.other_DKKk,
+        total_repowering=inputs.repowering_cost_DKKk,
         total_capex=total_capex,
     )
 

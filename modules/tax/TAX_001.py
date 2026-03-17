@@ -1,6 +1,6 @@
 """
 MODULE_ID:    TAX_001
-VERSION:      1.0
+VERSION:      1.1
 TIER:         detailed
 MARKETS:      ["DK"]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
@@ -8,10 +8,19 @@ TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
 Danish corporate tax calculation for renewable energy projects.
 
 Implements:
-  - Declining balance depreciation (saldometoden), up to 4 buckets
+  - Declining balance depreciation (saldometoden), 7 buckets:
+      0. Hard PV CAPEX          (driftsmidler, typically 25%)
+      1. Hard BESS CAPEX        (driftsmidler, typically 25%)
+      2. Grid connection        (driftsmidler, typically 25%)
+      3. Development            (driftsmidler, typically 25%)
+      4. Land / real estate     (bygninger, typically 4%)
+      5. Advisors               (driftsmidler, typically 25%)
+      6. BESS repowering        (driftsmidler, typically 25%)
   - EBITDA-based interest deductibility (rentefradragsbegrænsning)
   - Tax loss carry-forward with full/partial usage limits
   - Monthly cash payment timing (month 3 = prior year, month 11 = YTD)
+
+Backward compatible: 4-bucket inputs are automatically padded to 7.
 
 Source: EE_MODEL_BUILD_SPEC.md v2.0 §7.1
 """
@@ -22,6 +31,19 @@ import json
 from collections import OrderedDict
 from pathlib import Path
 from pydantic import BaseModel, Field, model_validator
+
+
+N_BUCKETS = 7
+
+BUCKET_NAMES = [
+    "Hard PV CAPEX",
+    "Hard BESS CAPEX",
+    "Grid connection",
+    "Development",
+    "Land / real estate",
+    "Advisors",
+    "BESS repowering",
+]
 
 
 # ============================================================================
@@ -40,13 +62,14 @@ class Inputs(BaseModel):
     ebitda: list[float] = Field(..., description="Monthly EBITDA DKKk")
     total_interest: list[float] = Field(..., description="Monthly gross interest expense DKKk")
 
-    # Depreciation: 4 buckets, each a list of monthly capex additions (length = periods)
+    # Depreciation: 4 or 7 buckets, each a list of monthly capex additions (length = periods)
+    # If 4 buckets provided, padded to 7 with zeros for backward compatibility.
     capex_by_bucket: list[list[float]] = Field(
-        description="Monthly capex additions per bucket — 4 lists, each length = periods"
+        description="Monthly capex additions per bucket — 4 or 7 lists, each length = periods"
     )
     opening_balances: list[float] = Field(
-        default=[0.0, 0.0, 0.0, 0.0],
-        description="Opening tax basis per bucket DKKk (4 values)"
+        default_factory=lambda: [0.0] * N_BUCKETS,
+        description="Opening tax basis per bucket DKKk (4 or 7 values)"
     )
 
     @model_validator(mode="after")
@@ -56,13 +79,26 @@ class Inputs(BaseModel):
             raise ValueError(f"ebitda length {len(self.ebitda)} != periods {n}")
         if len(self.total_interest) != n:
             raise ValueError(f"total_interest length {len(self.total_interest)} != periods {n}")
-        if len(self.capex_by_bucket) != 4:
-            raise ValueError("capex_by_bucket must have exactly 4 bucket lists")
+        nb = len(self.capex_by_bucket)
+        if nb not in (4, N_BUCKETS):
+            raise ValueError(
+                f"capex_by_bucket must have 4 or {N_BUCKETS} bucket lists, got {nb}"
+            )
         for i, b in enumerate(self.capex_by_bucket):
             if len(b) != n:
                 raise ValueError(f"capex_by_bucket[{i}] length {len(b)} != periods {n}")
-        if len(self.opening_balances) != 4:
-            raise ValueError("opening_balances must have exactly 4 values")
+        # Pad 4 → 7
+        if nb == 4:
+            self.capex_by_bucket = list(self.capex_by_bucket) + [
+                [0.0] * n for _ in range(N_BUCKETS - 4)
+            ]
+        nob = len(self.opening_balances)
+        if nob not in (4, N_BUCKETS):
+            raise ValueError(
+                f"opening_balances must have 4 or {N_BUCKETS} values, got {nob}"
+            )
+        if nob == 4:
+            self.opening_balances = list(self.opening_balances) + [0.0] * (N_BUCKETS - 4)
         return self
 
 
@@ -172,30 +208,33 @@ def _spread_annual_to_monthly(
 def calculate_declining_balance(
     opening_balances: list[float],
     capex_by_bucket: list[list[float]],
-    rate: float,
+    rates: list[float],
     year_groups: OrderedDict,
     periods: int,
 ) -> tuple[list[float], list[float]]:
     """
-    Saldometoden: depreciation = rate × (opening balance + year capex additions).
-    Closing balance = (opening + additions) × (1 − rate).
+    Saldometoden: depreciation = rate[b] × (opening balance + year capex additions).
+    Closing balance = (opening + additions) × (1 − rate[b]).
+
+    `rates` is a list of per-bucket depreciation rates (length = N_BUCKETS).
 
     Returns:
         annual_depreciation: one value per year
         monthly_depreciation: evenly spread across months in each year
     """
+    nb = len(opening_balances)
     balances = list(opening_balances)
     annual_dep = []
 
     for year_periods in year_groups.values():
         year_capex = [
             sum(capex_by_bucket[b][p] for p in year_periods)
-            for b in range(4)
+            for b in range(nb)
         ]
-        basis = [balances[b] + year_capex[b] for b in range(4)]
-        year_total = sum(basis[b] * rate for b in range(4))
-        for b in range(4):
-            balances[b] = max(0.0, basis[b] * (1.0 - rate))
+        basis = [balances[b] + year_capex[b] for b in range(nb)]
+        year_total = sum(basis[b] * rates[b] for b in range(nb))
+        for b in range(nb):
+            balances[b] = max(0.0, basis[b] * (1.0 - rates[b]))
         annual_dep.append(year_total)
 
     monthly_dep = _spread_annual_to_monthly(annual_dep, year_groups, periods)
@@ -330,11 +369,19 @@ def calculate(inputs: Inputs) -> Outputs:
         sum(inputs.total_interest[p] for p in plist) for plist in yg.values()
     ]
 
-    # Step 1 — Depreciation
+    # Step 1 — Depreciation (per-bucket rates)
+    if "depreciation_rates" in tax:
+        dep_rates = list(tax["depreciation_rates"])
+    else:
+        dep_rates = [tax["depreciation_rate"]] * N_BUCKETS
+    # Ensure we have exactly N_BUCKETS rates
+    if len(dep_rates) < N_BUCKETS:
+        dep_rates += [dep_rates[-1]] * (N_BUCKETS - len(dep_rates))
+
     annual_dep, monthly_dep = calculate_declining_balance(
         inputs.opening_balances,
         inputs.capex_by_bucket,
-        tax["depreciation_rate"],
+        dep_rates,
         yg,
         inputs.periods,
     )

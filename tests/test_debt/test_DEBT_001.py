@@ -3,6 +3,7 @@
 import math
 import pytest
 from modules.debt.DEBT_001 import (
+    DSCRStream,
     Inputs,
     Outputs,
     calculate,
@@ -10,6 +11,7 @@ from modules.debt.DEBT_001 import (
     _infer_repayment_start,
     _annuity_payment,
     _year_groups,
+    _blended_dscr_by_year,
     get_excel_formulas,
 )
 
@@ -388,9 +390,365 @@ def test_get_excel_formulas_keys():
         "debt_service": "K15", "cfads_range": "K$20:K$20",
         "ds_range": "K$15:K$15", "year_range": "K$3:K$3",
         "year_ref": "K3", "balance": "G10", "tenor_months": "B6",
+        "blended_dscr": "G20", "interest_range": "K$13:K$13",
+        "ops_flag_range": "K$4:K$4",
     }
     formulas = get_excel_formulas(refs)
     for key in ("opening_balance", "interest", "annuity_principal", "closing_balance",
-                "debt_service", "annuity_payment"):
+                "debt_service", "annuity_payment", "sculpted_principal"):
         assert key in formulas
         assert formulas[key].startswith("=")
+
+
+# ---------------------------------------------------------------------------
+# Non-sculpted: new output fields
+# ---------------------------------------------------------------------------
+
+def test_non_sculpted_sized_facility_equals_facility():
+    out = calculate(_make_inputs(facility=100_000.0))
+    assert out.sized_facility == pytest.approx(100_000.0)
+
+
+def test_non_sculpted_blended_dscr_is_nan():
+    out = calculate(_make_inputs())
+    assert all(math.isnan(v) for v in out.blended_dscr_annual)
+
+
+# ---------------------------------------------------------------------------
+# Sculpted: helpers
+# ---------------------------------------------------------------------------
+
+def _sculpted_streams(periods, n_draw, pv_cfads_monthly=800.0, bess_cfads_monthly=200.0):
+    """Create two CFADS streams: PV contracted + BESS merchant."""
+    zeros = [0.0] * n_draw
+    ops = periods - n_draw
+    return [
+        DSCRStream(
+            name="pv_contracted",
+            target_dscr=1.20,
+            cfads=zeros + [pv_cfads_monthly] * ops,
+        ),
+        DSCRStream(
+            name="bess_merchant",
+            target_dscr=1.80,
+            cfads=zeros + [bess_cfads_monthly] * ops,
+        ),
+    ]
+
+
+def _make_sculpted_inputs(
+    facility=100_000.0,
+    rate=0.05,
+    tenor_months=120,
+    n_draw=12,
+    periods=180,
+    pv_cfads=800.0,
+    bess_cfads=200.0,
+    leverage_cap_pct=None,
+    total_capex_DKKk=None,
+):
+    drawdowns = _even_drawdowns(facility, n_draw, periods)
+    streams = _sculpted_streams(periods, n_draw, pv_cfads, bess_cfads)
+    return Inputs(
+        facility=facility,
+        all_in_rate=rate,
+        repayment_type="sculpted",
+        tenor_months=tenor_months,
+        drawdowns=drawdowns,
+        periods=periods,
+        start_year=2025,
+        start_month=1,
+        sculpted_dscr_streams=streams,
+        leverage_cap_pct=leverage_cap_pct,
+        total_capex_DKKk=total_capex_DKKk,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sculpted: validation
+# ---------------------------------------------------------------------------
+
+def test_sculpted_requires_streams():
+    with pytest.raises(ValueError, match="sculpted_dscr_streams"):
+        Inputs(
+            facility=100_000.0, all_in_rate=0.05,
+            repayment_type="sculpted", tenor_months=120,
+            drawdowns=_even_drawdowns(100_000.0, 12, 180),
+            periods=180, start_year=2025, start_month=1,
+        )
+
+
+def test_sculpted_validates_stream_cfads_length():
+    with pytest.raises(ValueError, match="sculpted_dscr_streams"):
+        Inputs(
+            facility=100_000.0, all_in_rate=0.05,
+            repayment_type="sculpted", tenor_months=120,
+            drawdowns=_even_drawdowns(100_000.0, 12, 180),
+            periods=180, start_year=2025, start_month=1,
+            sculpted_dscr_streams=[
+                DSCRStream(name="pv", target_dscr=1.2, cfads=[100.0] * 10),  # wrong length
+            ],
+        )
+
+
+def test_sculpted_leverage_cap_requires_capex():
+    with pytest.raises(ValueError, match="total_capex_DKKk"):
+        Inputs(
+            facility=100_000.0, all_in_rate=0.05,
+            repayment_type="sculpted", tenor_months=120,
+            drawdowns=_even_drawdowns(100_000.0, 12, 180),
+            periods=180, start_year=2025, start_month=1,
+            sculpted_dscr_streams=_sculpted_streams(180, 12),
+            leverage_cap_pct=0.70,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Sculpted: blended DSCR
+# ---------------------------------------------------------------------------
+
+def test_blended_dscr_single_stream():
+    """One stream → blended = stream target."""
+    n = 24
+    yg = _year_groups(n, 2025, 1)
+    streams = [DSCRStream(name="pv", target_dscr=1.30, cfads=[100.0] * n)]
+    blended = _blended_dscr_by_year(streams, yg)
+    for v in blended.values():
+        assert v == pytest.approx(1.30)
+
+
+def test_blended_dscr_two_streams_weighted():
+    """80% PV (1.2×) + 20% BESS (1.8×) → blended = 1.32×."""
+    n = 12
+    yg = _year_groups(n, 2025, 1)
+    streams = [
+        DSCRStream(name="pv", target_dscr=1.20, cfads=[800.0] * n),
+        DSCRStream(name="bess", target_dscr=1.80, cfads=[200.0] * n),
+    ]
+    blended = _blended_dscr_by_year(streams, yg)
+    # blended = (800*1.2 + 200*1.8) / (800+200) = (960+360)/1000 = 1.32
+    assert blended[2025] == pytest.approx(1.32)
+
+
+def test_blended_dscr_zero_cfads_year():
+    """Year with zero CFADS → blended defaults to 999."""
+    n = 24
+    yg = _year_groups(n, 2025, 1)
+    streams = [
+        DSCRStream(name="pv", target_dscr=1.20, cfads=[0.0] * 12 + [100.0] * 12),
+    ]
+    blended = _blended_dscr_by_year(streams, yg)
+    assert blended[2025] == pytest.approx(999.0)
+    assert blended[2026] == pytest.approx(1.20)
+
+
+# ---------------------------------------------------------------------------
+# Sculpted: balance mechanics
+# ---------------------------------------------------------------------------
+
+def test_sculpted_returns_outputs():
+    out = calculate(_make_sculpted_inputs())
+    assert isinstance(out, Outputs)
+
+
+def test_sculpted_array_lengths():
+    n = 180
+    out = calculate(_make_sculpted_inputs(periods=n))
+    for field in ("opening_balance", "drawdown", "interest", "principal",
+                  "closing_balance", "debt_service", "dscr_annual",
+                  "blended_dscr_annual"):
+        assert len(getattr(out, field)) == n, f"{field} wrong length"
+
+
+def test_sculpted_closing_equals_opening_plus_drawdown_minus_principal():
+    out = calculate(_make_sculpted_inputs())
+    for p in range(len(out.closing_balance)):
+        expected = out.opening_balance[p] + out.drawdown[p] - out.principal[p]
+        assert out.closing_balance[p] == pytest.approx(expected, abs=1e-6)
+
+
+def test_sculpted_opening_equals_previous_closing():
+    out = calculate(_make_sculpted_inputs())
+    for p in range(1, len(out.opening_balance)):
+        assert out.opening_balance[p] == pytest.approx(out.closing_balance[p - 1], abs=1e-6)
+
+
+def test_sculpted_no_principal_during_construction():
+    n_draw = 12
+    out = calculate(_make_sculpted_inputs(n_draw=n_draw))
+    for p in range(n_draw):
+        assert out.principal[p] == pytest.approx(0.0)
+
+
+def test_sculpted_balance_never_negative():
+    out = calculate(_make_sculpted_inputs())
+    assert all(b >= -1e-6 for b in out.closing_balance)
+
+
+def test_sculpted_principal_never_negative():
+    out = calculate(_make_sculpted_inputs())
+    assert all(p >= -1e-9 for p in out.principal)
+
+
+def test_sculpted_debt_service_equals_interest_plus_principal():
+    out = calculate(_make_sculpted_inputs())
+    for p in range(len(out.debt_service)):
+        assert out.debt_service[p] == pytest.approx(
+            out.interest[p] + out.principal[p], abs=1e-9
+        )
+
+
+# ---------------------------------------------------------------------------
+# Sculpted: DSCR targeting
+# ---------------------------------------------------------------------------
+
+def test_sculpted_achieved_dscr_meets_blended_target():
+    """Annual DSCR during repayment should be >= blended target."""
+    out = calculate(_make_sculpted_inputs(
+        facility=100_000.0, rate=0.05, tenor_months=120,
+        n_draw=12, periods=132, pv_cfads=800.0, bess_cfads=200.0,
+    ))
+    # blended target = 1.32
+    rep_dscrs = [v for v in out.dscr_annual[12:] if not math.isnan(v)]
+    # Achieved DSCR should be >= target (sculpting is slightly conservative)
+    assert all(d >= 1.30 for d in rep_dscrs)
+
+
+def test_sculpted_blended_dscr_annual_populated():
+    out = calculate(_make_sculpted_inputs())
+    # During operations, blended_dscr_annual should not be nan
+    assert not math.isnan(out.blended_dscr_annual[12])
+    assert out.blended_dscr_annual[12] == pytest.approx(1.32)
+
+
+def test_sculpted_principal_varies_with_cfads():
+    """Higher CFADS → higher principal (sculpted adjusts to cash flow)."""
+    out_low = calculate(_make_sculpted_inputs(pv_cfads=500.0, bess_cfads=100.0))
+    out_high = calculate(_make_sculpted_inputs(pv_cfads=2000.0, bess_cfads=500.0))
+    # Year 2 (periods 12-23) principal should be higher with more CFADS
+    low_yr2 = sum(out_low.principal[p] for p in range(12, 24))
+    high_yr2 = sum(out_high.principal[p] for p in range(12, 24))
+    assert high_yr2 > low_yr2
+
+
+# ---------------------------------------------------------------------------
+# Sculpted: auto-sizing
+# ---------------------------------------------------------------------------
+
+def test_sculpted_auto_sizes_below_facility():
+    """With tight CFADS, sized facility should be less than nominal facility."""
+    out = calculate(_make_sculpted_inputs(
+        facility=500_000.0, rate=0.05, tenor_months=120,
+        n_draw=12, periods=132, pv_cfads=400.0, bess_cfads=100.0,
+    ))
+    assert out.sized_facility < 500_000.0
+    assert out.sized_facility > 0.0
+    assert out.fully_repaid
+
+
+def test_sculpted_auto_sizes_to_full_when_cfads_abundant():
+    """With abundant CFADS, sized facility should equal nominal facility."""
+    out = calculate(_make_sculpted_inputs(
+        facility=50_000.0, rate=0.05, tenor_months=120,
+        n_draw=12, periods=132, pv_cfads=5000.0, bess_cfads=2000.0,
+    ))
+    assert out.sized_facility == pytest.approx(50_000.0, rel=1e-4)
+
+
+def test_sculpted_fully_repaid_within_tenor():
+    """Auto-sized sculpted debt should be fully repaid."""
+    out = calculate(_make_sculpted_inputs(
+        facility=200_000.0, rate=0.05, tenor_months=120,
+        n_draw=12, periods=132,
+    ))
+    assert out.fully_repaid
+    assert out.final_balance == pytest.approx(0.0, abs=1.0)
+
+
+def test_sculpted_total_principal_equals_sized_facility():
+    out = calculate(_make_sculpted_inputs(
+        facility=200_000.0, rate=0.05, tenor_months=120,
+        n_draw=12, periods=132,
+    ))
+    assert out.total_principal == pytest.approx(out.sized_facility, abs=1.0)
+
+
+# ---------------------------------------------------------------------------
+# Sculpted: leverage cap
+# ---------------------------------------------------------------------------
+
+def test_sculpted_leverage_cap_binds():
+    """Leverage cap should limit facility below DSCR-sized amount."""
+    # Large CFADS → DSCR sizing alone would support full facility
+    out_uncapped = calculate(_make_sculpted_inputs(
+        facility=200_000.0, rate=0.05, tenor_months=120,
+        n_draw=12, periods=132, pv_cfads=5000.0, bess_cfads=2000.0,
+    ))
+    out_capped = calculate(_make_sculpted_inputs(
+        facility=200_000.0, rate=0.05, tenor_months=120,
+        n_draw=12, periods=132, pv_cfads=5000.0, bess_cfads=2000.0,
+        leverage_cap_pct=0.50, total_capex_DKKk=200_000.0,
+    ))
+    assert out_uncapped.sized_facility == pytest.approx(200_000.0, rel=1e-4)
+    assert out_capped.sized_facility == pytest.approx(100_000.0, rel=1e-4)
+
+
+def test_sculpted_leverage_cap_does_not_bind_when_dscr_tighter():
+    """When DSCR sizing < leverage cap, leverage cap doesn't bind."""
+    out = calculate(_make_sculpted_inputs(
+        facility=500_000.0, rate=0.05, tenor_months=120,
+        n_draw=12, periods=132, pv_cfads=400.0, bess_cfads=100.0,
+        leverage_cap_pct=0.90, total_capex_DKKk=500_000.0,
+    ))
+    # DSCR-sized should be < 450,000 (= 0.9 × 500,000)
+    assert out.sized_facility < 450_000.0
+
+
+def test_sculpted_drawdowns_scaled_with_facility():
+    """When auto-sizing reduces facility, drawdowns should scale proportionally."""
+    out = calculate(_make_sculpted_inputs(
+        facility=200_000.0, rate=0.05, tenor_months=120,
+        n_draw=12, periods=132, pv_cfads=5000.0, bess_cfads=2000.0,
+        leverage_cap_pct=0.50, total_capex_DKKk=200_000.0,
+    ))
+    # Sized facility = 100,000, so drawdowns should sum to ~100,000
+    assert sum(out.drawdown) == pytest.approx(out.sized_facility, abs=1.0)
+
+
+# ---------------------------------------------------------------------------
+# Sculpted: 4-stream scenario (PV contracted, PV merchant, BESS contracted, BESS merchant)
+# ---------------------------------------------------------------------------
+
+def test_sculpted_four_streams():
+    """Full 4-stream scenario matching spec requirements."""
+    n = 132
+    n_draw = 12
+    ops = n - n_draw
+    zeros = [0.0] * n_draw
+
+    streams = [
+        DSCRStream(name="pv_contracted", target_dscr=1.20, cfads=zeros + [400.0] * ops),
+        DSCRStream(name="pv_merchant", target_dscr=1.50, cfads=zeros + [200.0] * ops),
+        DSCRStream(name="bess_contracted", target_dscr=1.20, cfads=zeros + [100.0] * ops),
+        DSCRStream(name="bess_merchant", target_dscr=1.80, cfads=zeros + [100.0] * ops),
+    ]
+    # blended = (400*1.2 + 200*1.5 + 100*1.2 + 100*1.8) / 800
+    #         = (480 + 300 + 120 + 180) / 800 = 1080/800 = 1.35
+    inp = Inputs(
+        facility=200_000.0,
+        all_in_rate=0.05,
+        repayment_type="sculpted",
+        tenor_months=120,
+        drawdowns=_even_drawdowns(200_000.0, n_draw, n),
+        periods=n,
+        start_year=2025,
+        start_month=1,
+        sculpted_dscr_streams=streams,
+    )
+    out = calculate(inp)
+
+    assert isinstance(out, Outputs)
+    assert out.fully_repaid
+    assert out.blended_dscr_annual[12] == pytest.approx(1.35)
+    assert out.sized_facility > 0
+    assert out.total_principal == pytest.approx(out.sized_facility, abs=1.0)

@@ -24,6 +24,9 @@ def _base_inputs(
     land_DKKk=3_000.0,
     contingency_pct=0.05,
     other_DKKk=2_000.0,
+    repowering_cost_DKKk=0.0,
+    repowering_period=0,
+    repowering_drawdown_months=1,
 ) -> Inputs:
     if drawdown_profile is None:
         drawdown_profile = [1.0 / construction_periods] * construction_periods
@@ -38,6 +41,9 @@ def _base_inputs(
         land_DKKk=land_DKKk,
         contingency_pct=contingency_pct,
         other_DKKk=other_DKKk,
+        repowering_cost_DKKk=repowering_cost_DKKk,
+        repowering_period=repowering_period,
+        repowering_drawdown_months=repowering_drawdown_months,
     )
 
 
@@ -232,6 +238,7 @@ def test_total_capex_equals_sum_of_components():
     expected = (
         out.total_epc + out.total_grid_connection + out.total_development
         + out.total_land + out.total_contingency + out.total_other
+        + out.total_repowering
     )
     assert out.total_capex == pytest.approx(expected)
 
@@ -242,6 +249,7 @@ def test_monthly_total_is_sum_of_categories():
         expected = (
             out.epc[p] + out.grid_connection[p] + out.development[p]
             + out.land[p] + out.contingency[p] + out.other[p]
+            + out.repowering[p]
         )
         assert out.total_capex_monthly[p] == pytest.approx(expected)
 
@@ -312,6 +320,160 @@ def test_viuf_proxy_capex():
     # Peak spend in middle of construction
     mid = construction_periods // 2
     assert out.total_capex_monthly[mid] > out.total_capex_monthly[0]
+
+
+# ---------------------------------------------------------------------------
+# Unit: get_excel_formulas
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Unit: BESS repowering
+# ---------------------------------------------------------------------------
+
+def _repowering_inputs(
+    repowering_cost=50_000.0,
+    repowering_period=120,
+    repowering_drawdown_months=3,
+    periods=240,
+):
+    return _base_inputs(
+        periods=periods,
+        repowering_cost_DKKk=repowering_cost,
+        repowering_period=repowering_period,
+        repowering_drawdown_months=repowering_drawdown_months,
+    )
+
+
+def test_repowering_zero_by_default():
+    out = calculate(_base_inputs())
+    assert all(v == pytest.approx(0.0) for v in out.repowering)
+    assert out.total_repowering == pytest.approx(0.0)
+
+
+def test_repowering_array_length():
+    n = 240
+    out = calculate(_repowering_inputs(periods=n))
+    assert len(out.repowering) == n
+
+
+def test_repowering_spend_in_window():
+    """Repowering cost appears only within repowering window."""
+    out = calculate(_repowering_inputs(
+        repowering_cost=30_000.0, repowering_period=120,
+        repowering_drawdown_months=3, periods=240,
+    ))
+    for p in range(120):
+        assert out.repowering[p] == pytest.approx(0.0)
+    for p in range(120, 123):
+        assert out.repowering[p] > 0
+    for p in range(123, 240):
+        assert out.repowering[p] == pytest.approx(0.0)
+
+
+def test_repowering_spread_evenly():
+    """Cost is spread evenly across drawdown months."""
+    cost = 30_000.0
+    months = 3
+    out = calculate(_repowering_inputs(
+        repowering_cost=cost, repowering_period=120,
+        repowering_drawdown_months=months,
+    ))
+    for p in range(120, 123):
+        assert out.repowering[p] == pytest.approx(cost / months)
+
+
+def test_repowering_single_month():
+    """Default 1-month drawdown puts all cost in one period."""
+    cost = 50_000.0
+    out = calculate(_repowering_inputs(
+        repowering_cost=cost, repowering_period=100,
+        repowering_drawdown_months=1,
+    ))
+    assert out.repowering[100] == pytest.approx(cost)
+    assert out.repowering[99] == pytest.approx(0.0)
+    assert out.repowering[101] == pytest.approx(0.0)
+
+
+def test_repowering_total_scalar():
+    cost = 45_000.0
+    out = calculate(_repowering_inputs(repowering_cost=cost))
+    assert out.total_repowering == pytest.approx(cost)
+
+
+def test_repowering_included_in_total_capex_monthly():
+    out = calculate(_repowering_inputs(
+        repowering_cost=30_000.0, repowering_period=120,
+        repowering_drawdown_months=1,
+    ))
+    # Period 120 total should include repowering
+    assert out.total_capex_monthly[120] >= 30_000.0
+
+
+def test_repowering_included_in_cumulative():
+    cost = 30_000.0
+    out = calculate(_repowering_inputs(
+        repowering_cost=cost, repowering_period=120,
+        repowering_drawdown_months=1,
+    ))
+    # Cumulative at end should include construction + repowering
+    assert out.cumulative_capex[-1] == pytest.approx(out.total_capex)
+    assert out.total_capex > out.total_epc + cost  # construction + repowering
+
+
+def test_repowering_included_in_total_capex_scalar():
+    cost = 30_000.0
+    out = calculate(_repowering_inputs(repowering_cost=cost))
+    out_no_rep = calculate(_base_inputs(periods=240))
+    assert out.total_capex == pytest.approx(out_no_rep.total_capex + cost)
+
+
+def test_repowering_cumulative_step():
+    """Cumulative capex should step up at repowering period."""
+    out = calculate(_repowering_inputs(
+        repowering_cost=30_000.0, repowering_period=120,
+        repowering_drawdown_months=1,
+    ))
+    assert out.cumulative_capex[120] > out.cumulative_capex[119]
+    # After construction (period 12+) and before repowering, cumulative is flat
+    assert out.cumulative_capex[119] == pytest.approx(out.cumulative_capex[12])
+
+
+def test_repowering_window_exceeds_periods():
+    with pytest.raises(ValueError, match="Repowering window"):
+        Inputs(
+            periods=100,
+            construction_start_period=0,
+            construction_periods=12,
+            drawdown_profile=[1 / 12] * 12,
+            epc_DKKk=100_000.0,
+            repowering_cost_DKKk=50_000.0,
+            repowering_period=98,
+            repowering_drawdown_months=6,  # 98+6=104 > 100
+        )
+
+
+def test_repowering_viuf_proxy():
+    """Viuf BESS repowering: 100 MW/400 MWh at year 10, ~40% of original BESS cost."""
+    out = calculate(Inputs(
+        periods=475,
+        construction_start_period=0,
+        construction_periods=18,
+        drawdown_profile=[1 / 18] * 18,
+        epc_DKKk=550_000.0,
+        grid_connection_DKKk=80_000.0,
+        development_DKKk=30_000.0,
+        land_DKKk=20_000.0,
+        contingency_pct=0.05,
+        other_DKKk=25_000.0,
+        repowering_cost_DKKk=120_000.0,  # ~40% of BESS
+        repowering_period=18 + 120,       # year 10 of operations
+        repowering_drawdown_months=6,
+    ))
+    assert out.total_repowering == pytest.approx(120_000.0)
+    assert out.total_capex > 800_000  # construction + repowering
+    # Repowering spend in window
+    for p in range(138, 144):
+        assert out.repowering[p] == pytest.approx(20_000.0)
 
 
 # ---------------------------------------------------------------------------

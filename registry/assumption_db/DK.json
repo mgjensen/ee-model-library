@@ -41,6 +41,7 @@
   "tax": {
     "tax_rate": 0.22,
     "depreciation_rate": 0.15,
+    "depreciation_rates": [0.25, 0.25, 0.25, 0.25, 0.04, 0.25, 0.25],
     "ebitda_pct": 0.30,
     "unrestricted_interest_DKKk": 21300.0,
     "interest_carryforward_years": 5,

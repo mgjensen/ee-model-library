@@ -110,5 +110,21 @@
     "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
     "technologies": ["PV", "BESS", "WIND", "*"],
     "path": "modules/statements/IRR_001.py"
+  },
+  "VAT_FACILITY_001": {
+    "module_id": "VAT_FACILITY_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/debt/VAT_FACILITY_001.py"
+  },
+  "SHL_001": {
+    "module_id": "SHL_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/debt/SHL_001.py"
   }
 }

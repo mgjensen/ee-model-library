@@ -104,6 +104,17 @@ class Inputs(BaseModel):
     # --- F. Multimarket ---
     multimarket_pct: list[float]  # monthly fraction [0..1] of base net revenue
 
+    # --- H. Tolling agreement (optional) ---
+    tolling_active: bool = Field(False, description="Enable tolling agreement slot")
+    tolling_contracted_mw: float = Field(0.0, ge=0, description="Contracted MW for tolling")
+    tolling_price_DKK_per_mw_per_year: float = Field(
+        0.0, ge=0, description="Annual tolling fee DKK/MW/year"
+    )
+    tolling_start_period: int = Field(0, ge=0, description="0-based first period of tolling")
+    tolling_end_period: int = Field(0, ge=0, description="0-based last period of tolling (inclusive)")
+    tolling_inflation_rate: float = Field(0.025, ge=0, description="Annual inflation for tolling fee")
+    tolling_inflation_start_year: int = Field(2025, description="Year from which tolling inflation compounds")
+
     @model_validator(mode="after")
     def _validate(self):
         n = self.periods
@@ -120,6 +131,16 @@ class Inputs(BaseModel):
         for name, arr in time_series.items():
             if len(arr) != n:
                 raise ValueError(f"{name} length {len(arr)} != periods {n}")
+        if self.tolling_active:
+            if self.tolling_end_period >= n:
+                raise ValueError(
+                    f"tolling_end_period {self.tolling_end_period} >= periods {n}"
+                )
+            if self.tolling_start_period > self.tolling_end_period:
+                raise ValueError(
+                    f"tolling_start_period {self.tolling_start_period} > "
+                    f"tolling_end_period {self.tolling_end_period}"
+                )
         return self
 
 
@@ -165,8 +186,11 @@ class Outputs(BaseModel):
     bess_net_ex_multimarket: list[float]        # DKKk — base for multimarket %
     multimarket_revenue: list[float]            # DKKk
 
+    # --- H. Tolling ---
+    tolling_revenue: list[float]               # DKKk — contracted MW × price/MW/yr / 12
+
     # --- G. Summary ---
-    gross_revenue: list[float]                  # DKKk — discharge + multimarket
+    gross_revenue: list[float]                  # DKKk — discharge + multimarket + tolling
     total_costs: list[float]                    # DKKk — charging + import + export − adjustments
     net_revenue: list[float]                    # DKKk
 
@@ -415,8 +439,21 @@ def calculate(inputs: Inputs) -> Outputs:
         inputs.multimarket_pct[p] * bess_net_ex_multi[p] for p in range(n)
     ]
 
+    # --- H. Tolling agreement ---
+    tolling_rev = [0.0] * n
+    if inputs.tolling_active and inputs.tolling_contracted_mw > 0:
+        annual_fee = inputs.tolling_contracted_mw * inputs.tolling_price_DKK_per_mw_per_year
+        for year, year_periods in yg.items():
+            factor = _indexation_factor(
+                year, inputs.tolling_inflation_start_year, 1.0, inputs.tolling_inflation_rate
+            )
+            monthly_fee = annual_fee * factor / 12.0 / 1000.0  # DKKk
+            for p in year_periods:
+                if inputs.tolling_start_period <= p <= inputs.tolling_end_period:
+                    tolling_rev[p] = monthly_fee
+
     # --- G. Summary ---
-    gross_rev = [dis_revenue[p] + multi_rev[p] for p in range(n)]
+    gross_rev = [dis_revenue[p] + multi_rev[p] + tolling_rev[p] for p in range(n)]
     total_costs = [
         total_chg_cost[p]
         + total_import_costs[p]
@@ -460,6 +497,8 @@ def calculate(inputs: Inputs) -> Outputs:
         # F
         bess_net_ex_multimarket=bess_net_ex_multi,
         multimarket_revenue=multi_rev,
+        # H
+        tolling_revenue=tolling_rev,
         # G
         gross_revenue=gross_rev,
         total_costs=total_costs,
@@ -509,8 +548,12 @@ def get_excel_formulas(refs: dict) -> dict:
             f"={r['dis_rev']}-{r['chg_cost']}-{r['import_costs']}-{r['export_costs']}+{r['sys_adj']}"
         ),
         "multimarket_revenue":        f"={r['multi_pct']}*{r['bess_net_base']}",
+        # H
+        "tolling_revenue": (
+            f"={r['tolling_mw']}*{r['tolling_price']}*{r['tolling_factor']}/12/1000"
+        ),
         # G
-        "gross_revenue":              f"={r['dis_rev']}+{r['multi_rev']}",
+        "gross_revenue":              f"={r['dis_rev']}+{r['multi_rev']}+{r['tolling_rev']}",
         "total_costs": (
             f"={r['chg_cost']}+{r['import_costs']}+{r['export_costs']}-{r['sys_adj']}"
         ),

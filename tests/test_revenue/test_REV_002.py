@@ -610,6 +610,8 @@ def test_get_excel_formulas_keys():
         "export_costs": "K53", "sys_adj": "K54",
         "multi_pct": "K55", "bess_net_base": "K56",
         "multi_rev": "K57", "gross_rev": "K58", "total_costs": "K59",
+        "tolling_mw": "B60", "tolling_price": "B61", "tolling_factor": "C60",
+        "tolling_rev": "K60",
     }
     formulas = get_excel_formulas(refs)
     for key in (
@@ -620,7 +622,139 @@ def test_get_excel_formulas_keys():
         "tso_export_cost", "dso_export_cost", "nordpool_export_cost",
         "goo_lost_volume", "goo_revenue_lost", "export_tariff_addback",
         "bess_net_ex_multimarket", "multimarket_revenue",
+        "tolling_revenue",
         "gross_revenue", "total_costs", "net_revenue",
     ):
         assert key in formulas, f"Missing formula key: {key}"
         assert formulas[key].startswith("="), f"Formula {key!r} doesn't start with '='"
+
+
+# ---------------------------------------------------------------------------
+# H. Tolling agreement
+# ---------------------------------------------------------------------------
+
+def _tolling_inputs(
+    periods=24,
+    contracted_mw=50.0,
+    price_per_mw_year=100_000.0,
+    start_period=0,
+    end_period=23,
+    inflation_rate=0.0,
+    inflation_start_year=2025,
+    **kwargs,
+):
+    return _flat(
+        periods=periods,
+        tolling_active=True,
+        tolling_contracted_mw=contracted_mw,
+        tolling_price_DKK_per_mw_per_year=price_per_mw_year,
+        tolling_start_period=start_period,
+        tolling_end_period=end_period,
+        tolling_inflation_rate=inflation_rate,
+        tolling_inflation_start_year=inflation_start_year,
+        **kwargs,
+    )
+
+
+def test_tolling_inactive_gives_zero():
+    out = calculate(_flat())
+    assert all(v == pytest.approx(0.0) for v in out.tolling_revenue)
+
+
+def test_tolling_revenue_basic():
+    """50 MW × 100,000 DKK/MW/yr / 12 / 1000 = 416.667 DKKk/month."""
+    out = calculate(_tolling_inputs())
+    expected = 50.0 * 100_000.0 / 12.0 / 1000.0
+    for p in range(24):
+        assert out.tolling_revenue[p] == pytest.approx(expected)
+
+
+def test_tolling_only_in_window():
+    """Tolling revenue only between start and end periods."""
+    out = calculate(_tolling_inputs(periods=36, start_period=6, end_period=17))
+    for p in range(6):
+        assert out.tolling_revenue[p] == pytest.approx(0.0)
+    for p in range(6, 18):
+        assert out.tolling_revenue[p] > 0
+    for p in range(18, 36):
+        assert out.tolling_revenue[p] == pytest.approx(0.0)
+
+
+def test_tolling_added_to_gross_revenue():
+    """Gross revenue should include tolling."""
+    out_no = calculate(_flat())
+    out_yes = calculate(_tolling_inputs())
+    for p in range(24):
+        assert out_yes.gross_revenue[p] > out_no.gross_revenue[p]
+        diff = out_yes.gross_revenue[p] - out_no.gross_revenue[p]
+        assert diff == pytest.approx(out_yes.tolling_revenue[p])
+
+
+def test_tolling_added_to_net_revenue():
+    """Tolling increases net revenue (it's pure revenue, no associated cost)."""
+    out_no = calculate(_flat())
+    out_yes = calculate(_tolling_inputs())
+    assert out_yes.total_net_revenue > out_no.total_net_revenue
+
+
+def test_tolling_with_inflation():
+    """Tolling fee inflates year-over-year."""
+    out = calculate(_tolling_inputs(
+        periods=24, start_period=0, end_period=23,
+        inflation_rate=0.05, inflation_start_year=2025,
+    ))
+    # Year 2 (periods 12-23) should have higher tolling than year 1 (periods 0-11)
+    assert out.tolling_revenue[12] > out.tolling_revenue[0]
+    # Factor should be 1.05× higher
+    assert out.tolling_revenue[12] / out.tolling_revenue[0] == pytest.approx(1.05, rel=1e-6)
+
+
+def test_tolling_zero_contracted_mw():
+    """Active but 0 MW → no revenue."""
+    out = calculate(_tolling_inputs(contracted_mw=0.0))
+    assert all(v == pytest.approx(0.0) for v in out.tolling_revenue)
+
+
+def test_tolling_validation_end_exceeds_periods():
+    with pytest.raises(ValueError, match="tolling_end_period"):
+        _tolling_inputs(periods=12, end_period=12)
+
+
+def test_tolling_validation_start_after_end():
+    with pytest.raises(ValueError, match="tolling_start_period"):
+        _tolling_inputs(start_period=10, end_period=5)
+
+
+def test_tolling_array_length():
+    n = 36
+    out = calculate(_tolling_inputs(periods=n, end_period=n - 1))
+    assert len(out.tolling_revenue) == n
+
+
+def test_tolling_formula_in_excel():
+    refs = {
+        "dis_start_factor": "B5", "inf_rate": "B6", "year": "C3",
+        "dis_inf_start": "B7", "dis_price_raw": "C10", "dis_factor": "C8",
+        "dis_vol": "C6", "dis_price_inf": "C11",
+        "chg_start_factor": "B15", "chg_inf_start": "B16",
+        "grid_price_raw": "C14", "chg_factor": "C13",
+        "pv_price_raw": "C15", "grid_vol": "C12",
+        "pv_vol": "C16", "grid_price_inf": "C14",
+        "pv_price_inf": "C15", "feed_in_rate": "B20",
+        "net_loss_pct": "B21", "markup": "B22",
+        "power_mw": "B3", "import_fee_rate": "B25",
+        "tso_rate": "B30", "tso_factor": "C30",
+        "dso_rate": "B31", "dso_factor": "C31",
+        "np_rate": "B32", "np_factor": "C32",
+        "rte": "B4", "goo_lost_vol": "C40", "goo_price": "C41",
+        "tso_rate_inf": "C45", "dso_rate_inf": "C46", "np_rate_inf": "C47",
+        "dis_rev": "K50", "chg_cost": "K51", "import_costs": "K52",
+        "export_costs": "K53", "sys_adj": "K54",
+        "multi_pct": "K55", "bess_net_base": "K56",
+        "multi_rev": "K57", "gross_rev": "K58", "total_costs": "K59",
+        "tolling_mw": "B60", "tolling_price": "B61", "tolling_factor": "C60",
+        "tolling_rev": "K60",
+    }
+    formulas = get_excel_formulas(refs)
+    assert "tolling_revenue" in formulas
+    assert formulas["tolling_revenue"].startswith("=")
