@@ -150,5 +150,13 @@
     "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
     "technologies": ["BESS", "*"],
     "path": "modules/capex/BESS_REPOW_001.py"
+  },
+  "DEBT_REFI_001": {
+    "module_id": "DEBT_REFI_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
+    "technologies": ["PV", "BESS", "WIND", "*"],
+    "path": "modules/debt/DEBT_REFI_001.py"
   }
 }

@@ -43,6 +43,7 @@ import modules.debt.DEBT_001 as DEBT_001
 import modules.debt.DEBT_SCULPT_001 as DEBT_SCULPT_001
 import modules.debt.SHL_001 as SHL_001
 import modules.debt.VAT_FACILITY_001 as VAT_FACILITY_001
+import modules.debt.DEBT_REFI_001 as DEBT_REFI_001
 import modules.debt.DSRA_001 as DSRA_001
 import modules.tax.TAX_001 as TAX_001
 import modules.statements.PL_001 as PL_001
@@ -139,6 +140,7 @@ class ProjectConfig(BaseModel):
     bess_repow: Optional[BESS_REPOW_001.Inputs] = None  # BESS_REPOW_001
     debt:     Optional[DEBT_001.Inputs]  = None   # DEBT_001
     debt_sculpt: Optional[DEBT_SCULPT_001.Inputs] = None  # DEBT_SCULPT_001
+    debt_refi: Optional[DEBT_REFI_001.Inputs] = None  # DEBT_REFI_001
     shl:      Optional[SHL_001.Inputs]   = None   # SHL_001
     vat_facility: Optional[VAT_FACILITY_001.Inputs] = None  # VAT_FACILITY_001
     dsra: Optional[DSRA_001.Inputs] = None  # DSRA_001
@@ -285,6 +287,23 @@ def run(config: ProjectConfig) -> AssemblyResult:
         )
 
     # ------------------------------------------------------------------
+    # Step 9c: DEBT_REFI_001 — sculpted refinancing (wired from DEBT_SCULPT_001)
+    # ------------------------------------------------------------------
+    if config.debt_refi is not None:
+        refi_inp = config.debt_refi
+        # Auto-wire original balance from DEBT_SCULPT_001 if available
+        sculpt_out = out.get("DEBT_SCULPT_001")
+        if sculpt_out and refi_inp.active:
+            rp = refi_inp.refi_period
+            if rp < n and sculpt_out.closing_balance[rp] > 0.01:
+                refi_inp = refi_inp.model_copy(update={
+                    "original_balance_at_refi_DKKk": sculpt_out.closing_balance[rp],
+                })
+        out["DEBT_REFI_001"] = DEBT_REFI_001.calculate(
+            _inject_timeline(refi_inp, tl)
+        )
+
+    # ------------------------------------------------------------------
     # Step 9.5: SHL_001 — shareholder loan (no dependencies)
     # ------------------------------------------------------------------
     if config.shl is not None:
@@ -388,6 +407,10 @@ def run(config: ProjectConfig) -> AssemblyResult:
         if repow_out:
             dep = [dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
         interest = debt_out.interest if debt_out else _zeros(n)
+        # Add refi interest
+        refi_out = out.get("DEBT_REFI_001")
+        if refi_out:
+            interest = [interest[p] + refi_out.interest[p] for p in range(n)]
         tax_charge = tax_out.tax_charge_accrued if tax_out else _zeros(n)
 
         pl_inputs = PL_001.Inputs(
@@ -420,6 +443,15 @@ def run(config: ProjectConfig) -> AssemblyResult:
         if repow_out:
             cf_capex = [cf_capex[p] + repow_out.repowering_cost_monthly[p] for p in range(n)]
 
+        cf_draw = debt_out.drawdown if debt_out else []
+        cf_princ = debt_out.principal if debt_out else []
+        cf_int = debt_out.interest if debt_out else _zeros(n)
+        refi_out = out.get("DEBT_REFI_001")
+        if refi_out:
+            cf_draw = _add_series(cf_draw or None, refi_out.drawdown, n=n)
+            cf_princ = _add_series(cf_princ or None, refi_out.principal, n=n)
+            cf_int = [cf_int[p] + refi_out.interest[p] for p in range(n)]
+
         cf_inputs = CF_001.Inputs(
             periods=n,
             start_year=tl.start_year,
@@ -429,9 +461,9 @@ def run(config: ProjectConfig) -> AssemblyResult:
             depreciation=cf_dep,
             working_capital_change=sc.working_capital_change or [],
             capex_monthly=cf_capex,
-            debt_drawdown=debt_out.drawdown if debt_out else [],
-            principal_repayment=debt_out.principal if debt_out else [],
-            interest_paid=debt_out.interest if debt_out else _zeros(n),
+            debt_drawdown=cf_draw,
+            principal_repayment=cf_princ,
+            interest_paid=cf_int,
             dividends_paid=sc.dividends_paid or [],
         )
         out["CF_001"] = CF_001.calculate(cf_inputs)
@@ -463,7 +495,11 @@ def run(config: ProjectConfig) -> AssemblyResult:
             capex_monthly=bs_capex,
             depreciation_monthly=bs_dep,
             closing_cash=cf_out.closing_cash,
-            debt_closing_balance=debt_out.closing_balance if debt_out else _zeros(n),
+            debt_closing_balance=_add_series(
+                debt_out.closing_balance if debt_out else None,
+                out["DEBT_REFI_001"].closing_balance if "DEBT_REFI_001" in out else None,
+                n=n,
+            ),
             net_income=pl_out.net_income,
         )
         if sc.dividends_paid:

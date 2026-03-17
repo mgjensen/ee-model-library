@@ -46,6 +46,7 @@ MODULE_SHEET: dict[str, str] = {
     "SHL_001":   "Debt",
     "VAT_FACILITY_001": "Debt",
     "DSRA_001":  "Debt",
+    "DEBT_REFI_001": "Debt",
     "TAX_001":   "Debt",
     "PL_001":    "Statements",
     "CF_001":    "Statements",
@@ -219,6 +220,17 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
     ("Debt", "DSRA_001", "release"):          60,
     ("Debt", "DSRA_001", "commitment_fee"):   61,
     ("Debt", "DSRA_001", "net_cash_impact"):  62,
+
+    # ---- Debt sheet — DEBT_REFI_001 (rows 64–72) ----------------------------
+    ("Debt", "DEBT_REFI_001", "opening_balance"):  64,
+    ("Debt", "DEBT_REFI_001", "drawdown"):          65,
+    ("Debt", "DEBT_REFI_001", "interest"):           66,
+    ("Debt", "DEBT_REFI_001", "principal"):          67,
+    ("Debt", "DEBT_REFI_001", "cash_sweep"):         68,
+    ("Debt", "DEBT_REFI_001", "closing_balance"):   69,
+    ("Debt", "DEBT_REFI_001", "debt_service"):       70,
+    ("Debt", "DEBT_REFI_001", "dscr_achieved"):      71,
+    ("Debt", "DEBT_REFI_001", "llcr"):               72,
 
     # ---- Debt sheet — VAT_FACILITY_001 (rows 38–42) -------------------------
     ("Debt", "VAT_FACILITY_001", "vat_paid"):            39,
@@ -402,7 +414,8 @@ FIELD_LABELS: dict[str, str] = {
     "commitment_fee_paid":  "Commitment Fee",
     # SHL_001
     "repayment":        "SHL Repayment",
-    # DEBT_SCULPT_001 additions
+    # DEBT_SCULPT_001 / DEBT_REFI_001
+    "dscr_achieved":    "DSCR (achieved)",
     "llcr_series":      "LLCR",
     "pv_cfads":         "PV of CFADS",
     # DSRA_001
