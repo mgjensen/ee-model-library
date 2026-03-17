@@ -75,6 +75,17 @@ class Inputs(BaseModel):
         None, description="Monthly CFADS for DSCR calculation DKKk"
     )
 
+    # Cash sweep (mandatory prepayment from excess CFADS)
+    cash_sweep_pct: float = Field(
+        0.0, ge=0.0, le=1.0,
+        description="Fraction of CFADS (after debt service) swept as mandatory prepayment. "
+        "0 = disabled. Vendor model typical: 0.20."
+    )
+    cash_sweep_start_period: Optional[int] = Field(
+        None, ge=0,
+        description="0-based period when cash sweep begins. None = same as repayment start."
+    )
+
     # Sculpted-specific (ignored for other repayment types)
     sculpted_dscr_streams: Optional[list[DSCRStream]] = Field(
         None, description="Per-stream DSCR targets and CFADS for sculpted repayment"
@@ -119,14 +130,16 @@ class Outputs(BaseModel):
     opening_balance: list[float]    # DKKk — balance at start of period
     drawdown: list[float]           # DKKk — drawdown in period
     interest: list[float]           # DKKk — interest on opening balance
-    principal: list[float]          # DKKk — principal repaid
+    principal: list[float]          # DKKk — scheduled principal repaid
+    cash_sweep: list[float]         # DKKk — mandatory prepayment from excess CFADS
     closing_balance: list[float]    # DKKk — balance at end of period
-    debt_service: list[float]       # DKKk — interest + principal
+    debt_service: list[float]       # DKKk — interest + principal + cash_sweep
     dscr_annual: list[float]        # Annual DSCR mapped to each period (nan if no CFADS)
 
     # Summary
     total_interest: float
-    total_principal: float
+    total_principal: float          # Scheduled principal (excl. sweep)
+    total_cash_sweep: float         # Lifetime cash sweep prepayment
     final_balance: float            # Should be ~0 if fully repaid within model
     min_dscr: float                 # Minimum during repayment (nan if no CFADS)
     covenant_breached: bool
@@ -372,16 +385,33 @@ def calculate_schedule(inputs: Inputs) -> Outputs:
                 covenant_breached = True
         min_dscr = running_min if running_min < math.inf else float("nan")
 
+        # Cash sweep — mandatory prepayment from excess CFADS
+        sweep_arr = [0.0] * n
+        if inputs.cash_sweep_pct > 0 and total_cfads:
+            sweep_start = inputs.cash_sweep_start_period if inputs.cash_sweep_start_period is not None else rep_start
+            for p in range(sweep_start, n):
+                if closing[p] > 1e-9:
+                    excess = max(0.0, total_cfads[p] - debt_service[p])
+                    sweep = min(excess * inputs.cash_sweep_pct, closing[p])
+                    sweep_arr[p] = sweep
+                    closing[p] -= sweep
+            # Recompute final balance after sweep
+            final_bal = closing[-1] if closing else 0.0
+
+        total_ds_with_sweep = [debt_service[p] + sweep_arr[p] for p in range(n)]
+
         return Outputs(
             opening_balance=opening,
             drawdown=draws,
             interest=interest_arr,
             principal=principal_arr,
+            cash_sweep=sweep_arr,
             closing_balance=closing,
-            debt_service=debt_service,
+            debt_service=total_ds_with_sweep,
             dscr_annual=dscr_monthly,
             total_interest=sum(interest_arr),
             total_principal=sum(principal_arr),
+            total_cash_sweep=sum(sweep_arr),
             final_balance=final_bal,
             min_dscr=min_dscr,
             covenant_breached=covenant_breached,
@@ -459,16 +489,33 @@ def calculate_schedule(inputs: Inputs) -> Outputs:
 
     final_bal = closing_arr[-1] if closing_arr else 0.0
 
+    # Cash sweep — mandatory prepayment from excess CFADS (non-sculpted)
+    sweep_arr = [0.0] * n
+    cfads_for_sweep = inputs.cfads
+    if inputs.cash_sweep_pct > 0 and cfads_for_sweep is not None:
+        sweep_start = inputs.cash_sweep_start_period if inputs.cash_sweep_start_period is not None else rep_start
+        for p in range(sweep_start, n):
+            if closing_arr[p] > 1e-9:
+                excess = max(0.0, cfads_for_sweep[p] - debt_service[p])
+                sweep = min(excess * inputs.cash_sweep_pct, closing_arr[p])
+                sweep_arr[p] = sweep
+                closing_arr[p] -= sweep
+        final_bal = closing_arr[-1] if closing_arr else 0.0
+
+    total_ds_with_sweep = [debt_service[p] + sweep_arr[p] for p in range(n)]
+
     return Outputs(
         opening_balance=opening_arr,
         drawdown=list(inputs.drawdowns),
         interest=interest_arr,
         principal=principal_arr,
+        cash_sweep=sweep_arr,
         closing_balance=closing_arr,
-        debt_service=debt_service,
+        debt_service=total_ds_with_sweep,
         dscr_annual=dscr_monthly,
         total_interest=sum(interest_arr),
         total_principal=sum(principal_arr),
+        total_cash_sweep=sum(sweep_arr),
         final_balance=final_bal,
         min_dscr=min_dscr,
         covenant_breached=covenant_breached,

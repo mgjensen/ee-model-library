@@ -99,7 +99,7 @@ def test_get_row_capex_001_cumulative():
 
 
 def test_get_row_debt_001_closing_balance():
-    assert get_row("DEBT_001", "closing_balance") == 10
+    assert get_row("DEBT_001", "closing_balance") == 11
 
 
 def test_get_row_tax_001_tax_paid():

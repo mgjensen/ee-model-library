@@ -41,6 +41,7 @@ MODULE_SHEET: dict[str, str] = {
     "OPEX_003":  "Costs",
     "CAPEX_001": "Costs",
     "DEBT_001":  "Debt",
+    "DEBT_SCULPT_001": "Debt",
     "SHL_001":   "Debt",
     "VAT_FACILITY_001": "Debt",
     "TAX_001":   "Debt",
@@ -178,14 +179,24 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
     ("Costs", "CAPEX_001", "total_capex_monthly"): 33,
     ("Costs", "CAPEX_001", "cumulative_capex"):    34,
 
-    # ---- Debt sheet — DEBT_001 (rows 5–12) ----------------------------------
+    # ---- Debt sheet — DEBT_001 (rows 5–13) ----------------------------------
     ("Debt", "DEBT_001", "opening_balance"):  6,
     ("Debt", "DEBT_001", "drawdown"):         7,
     ("Debt", "DEBT_001", "interest"):         8,
     ("Debt", "DEBT_001", "principal"):        9,
-    ("Debt", "DEBT_001", "closing_balance"): 10,
-    ("Debt", "DEBT_001", "debt_service"):    11,
-    ("Debt", "DEBT_001", "dscr_annual"):     12,
+    ("Debt", "DEBT_001", "cash_sweep"):      10,
+    ("Debt", "DEBT_001", "closing_balance"): 11,
+    ("Debt", "DEBT_001", "debt_service"):    12,
+    ("Debt", "DEBT_001", "dscr_annual"):     13,
+
+    # ---- Debt sheet — DEBT_SCULPT_001 (rows 45–52) --------------------------
+    ("Debt", "DEBT_SCULPT_001", "opening_balance"):      46,
+    ("Debt", "DEBT_SCULPT_001", "drawdown"):             47,
+    ("Debt", "DEBT_SCULPT_001", "interest_paid"):        48,
+    ("Debt", "DEBT_SCULPT_001", "principal"):             49,
+    ("Debt", "DEBT_SCULPT_001", "closing_balance"):      50,
+    ("Debt", "DEBT_SCULPT_001", "debt_service"):         51,
+    ("Debt", "DEBT_SCULPT_001", "dscr_achieved"):        52,
 
     # ---- Debt sheet — VAT_FACILITY_001 (rows 38–42) -------------------------
     ("Debt", "VAT_FACILITY_001", "vat_paid"):            39,
@@ -350,6 +361,7 @@ FIELD_LABELS: dict[str, str] = {
     "drawdown":         "Drawdown",
     "interest":         "Interest",
     "principal":        "Principal Repayment",
+    "cash_sweep":       "Cash Sweep Prepayment",
     "closing_balance":  "Closing Balance",
     "debt_service":     "Debt Service",
     "dscr_annual":      "DSCR (annual)",
