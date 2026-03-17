@@ -277,3 +277,141 @@ def test_get_excel_formulas_keys():
                 "closing_balance_accrued", "closing_balance_cash"):
         assert key in formulas
         assert formulas[key].startswith("=")
+
+
+# ---------------------------------------------------------------------------
+# Multi-tranche tests
+# ---------------------------------------------------------------------------
+
+from modules.debt.SHL_001 import SHLTranche
+
+
+class TestMultiTranche:
+
+    def test_tranches_none_uses_single_tranche_logic(self):
+        """Backward compat: tranches=None runs old path."""
+        inp = Inputs(
+            periods=60, start_year=2026, start_month=1,
+            shl_pct_of_equity=0.80, margin=0.07, accrued=True,
+            equity_contributed=[1000.0] * 12 + [0.0] * 48,
+        )
+        out = calculate(inp)
+        assert out.tranche_outputs is None
+        assert out.initial_shl == pytest.approx(0.80 * 12000.0)
+
+    def test_single_tranche_via_tranches_matches_legacy(self):
+        """One tranche in list should produce same aggregate as legacy."""
+        eq = [1000.0] * 12 + [0.0] * 48
+        legacy = calculate(Inputs(
+            periods=60, start_year=2026, start_month=1,
+            shl_pct_of_equity=0.80, margin=0.07, accrued=True,
+            equity_contributed=eq,
+        ))
+        multi = calculate(Inputs(
+            periods=60, start_year=2026, start_month=1,
+            equity_contributed=eq,  # ignored when tranches set
+            tranches=[SHLTranche(
+                name="EV", shl_pct_of_equity=0.80,
+                equity_contributed=eq, margin=0.07, accrued=True,
+            )],
+        ))
+        assert multi.initial_shl == pytest.approx(legacy.initial_shl, rel=1e-6)
+        assert multi.total_interest == pytest.approx(legacy.total_interest, rel=1e-4)
+
+    def test_dual_tranche_ev_plus_bess(self):
+        n = 120
+        eq_ev = [5000.0] + [0.0] * (n - 1)  # lump sum
+        eq_bess = [0.0] * 60 + [2000.0] * 6 + [0.0] * 54
+        out = calculate(Inputs(
+            periods=n, start_year=2026, start_month=1,
+            equity_contributed=[0.0] * n,
+            tranches=[
+                SHLTranche(name="EV", fixed_amount_DKKk=5000.0,
+                           drawdown_schedule=eq_ev, margin=0.08, accrued=True),
+                SHLTranche(name="BESS", shl_pct_of_equity=1.0,
+                           equity_contributed=eq_bess, margin=0.06, accrued=False),
+            ],
+        ))
+        assert out.tranche_outputs is not None
+        assert len(out.tranche_outputs) == 2
+        assert out.tranche_outputs[0]["name"] == "EV"
+        assert out.tranche_outputs[1]["name"] == "BESS"
+        assert out.initial_shl == pytest.approx(5000.0 + 12000.0)
+
+    def test_fixed_amount_tranche_drawdown(self):
+        n = 60
+        dd = [10_000.0] + [0.0] * 59
+        out = calculate(Inputs(
+            periods=n, start_year=2026, start_month=1,
+            equity_contributed=[0.0] * n,
+            tranches=[SHLTranche(
+                name="EV", fixed_amount_DKKk=10_000.0,
+                drawdown_schedule=dd, margin=0.07, accrued=True,
+            )],
+        ))
+        assert out.initial_shl == pytest.approx(10_000.0)
+        assert out.opening_balance[0] == pytest.approx(10_000.0)
+
+    def test_aggregated_outputs_sum_of_tranches(self):
+        n = 60
+        eq = [500.0] * 12 + [0.0] * 48
+        out = calculate(Inputs(
+            periods=n, start_year=2026, start_month=1,
+            equity_contributed=eq,
+            tranches=[
+                SHLTranche(name="A", shl_pct_of_equity=0.50,
+                           equity_contributed=eq, margin=0.06, accrued=True),
+                SHLTranche(name="B", shl_pct_of_equity=0.30,
+                           equity_contributed=eq, margin=0.08, accrued=False),
+            ],
+        ))
+        for p in range(n):
+            a = out.tranche_outputs[0]["opening_balance"][p]
+            b = out.tranche_outputs[1]["opening_balance"][p]
+            assert out.opening_balance[p] == pytest.approx(a + b, abs=0.01)
+
+    def test_tranche_outputs_populated(self):
+        n = 60
+        eq = [1000.0] * 12 + [0.0] * 48
+        out = calculate(Inputs(
+            periods=n, start_year=2026, start_month=1,
+            equity_contributed=eq,
+            tranches=[SHLTranche(name="T1", shl_pct_of_equity=0.80,
+                                 equity_contributed=eq)],
+        ))
+        assert out.tranche_outputs is not None
+        t = out.tranche_outputs[0]
+        assert "name" in t
+        assert len(t["opening_balance"]) == n
+
+    def test_validation_rejects_both_sizing(self):
+        with pytest.raises(ValueError, match="exactly one"):
+            Inputs(
+                periods=60, start_year=2026, start_month=1,
+                equity_contributed=[0.0] * 60,
+                tranches=[SHLTranche(
+                    name="bad", fixed_amount_DKKk=1000.0,
+                    drawdown_schedule=[1000.0] + [0.0] * 59,
+                    shl_pct_of_equity=0.5,
+                    equity_contributed=[100.0] * 60,
+                )],
+            )
+
+    def test_validation_rejects_neither_sizing(self):
+        with pytest.raises(ValueError, match="exactly one"):
+            Inputs(
+                periods=60, start_year=2026, start_month=1,
+                equity_contributed=[0.0] * 60,
+                tranches=[SHLTranche(name="bad")],
+            )
+
+    def test_validation_drawdown_sum(self):
+        with pytest.raises(ValueError, match="drawdown_schedule sum"):
+            Inputs(
+                periods=60, start_year=2026, start_month=1,
+                equity_contributed=[0.0] * 60,
+                tranches=[SHLTranche(
+                    name="bad", fixed_amount_DKKk=1000.0,
+                    drawdown_schedule=[500.0] + [0.0] * 59,  # sums to 500 not 1000
+                )],
+            )

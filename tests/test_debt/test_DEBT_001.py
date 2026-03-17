@@ -752,3 +752,67 @@ def test_sculpted_four_streams():
     assert out.blended_dscr_annual[12] == pytest.approx(1.35)
     assert out.sized_facility > 0
     assert out.total_principal == pytest.approx(out.sized_facility, abs=1.0)
+
+
+# ---------------------------------------------------------------------------
+# Dual DSCR covenant tests
+# ---------------------------------------------------------------------------
+
+class TestDualDSCR:
+    def _make_dual(self, **kwargs):
+        n = 180
+        defaults = dict(
+            facility=100_000.0, all_in_rate=0.05, repayment_type="straight_line",
+            tenor_months=120, drawdowns=_even_drawdowns(100_000, 12, n),
+            periods=n, start_year=2025, start_month=1,
+            cfads=[0.0] * 12 + [2000.0] * 168,
+        )
+        defaults.update(kwargs)
+        return Inputs(**defaults)
+
+    def test_dual_dscr_none_falls_back_to_single(self):
+        out = calculate(self._make_dual())
+        assert len(out.dscr_covenant_applicable) == 180
+        assert all(v == 1.10 for v in out.dscr_covenant_applicable)
+        assert out.covenant_breached_ppa is False
+        assert out.covenant_breached_merchant is False
+
+    def test_dual_dscr_ppa_period_applies_lower_covenant(self):
+        out = calculate(self._make_dual(
+            dscr_covenant_ppa=1.05, dscr_covenant_merchant=1.30,
+            ppa_start_period=12, ppa_end_period=71,
+        ))
+        assert out.dscr_covenant_applicable[12] == 1.05
+        assert out.dscr_covenant_applicable[50] == 1.05
+
+    def test_dual_dscr_merchant_period_applies_higher_covenant(self):
+        out = calculate(self._make_dual(
+            dscr_covenant_ppa=1.05, dscr_covenant_merchant=1.30,
+            ppa_start_period=12, ppa_end_period=71,
+        ))
+        assert out.dscr_covenant_applicable[0] == 1.30
+        assert out.dscr_covenant_applicable[72] == 1.30
+
+    def test_dual_dscr_no_breach_either(self):
+        out = calculate(self._make_dual(
+            dscr_covenant_ppa=1.05, dscr_covenant_merchant=1.10,
+            ppa_start_period=12, ppa_end_period=131,
+            cfads=[0.0] * 12 + [5000.0] * 168,
+        ))
+        assert out.covenant_breached_ppa is False
+        assert out.covenant_breached_merchant is False
+
+    def test_dual_dscr_breach_merchant_only(self):
+        # PPA covers first 3 years of ops (12-47), merchant from 48 onward
+        out = calculate(self._make_dual(
+            dscr_covenant_ppa=0.50, dscr_covenant_merchant=99.0,
+            ppa_start_period=12, ppa_end_period=47,
+        ))
+        assert out.covenant_breached_merchant is True
+
+    def test_dual_dscr_covenant_applicable_length(self):
+        out = calculate(self._make_dual(
+            dscr_covenant_ppa=1.05, dscr_covenant_merchant=1.30,
+            ppa_start_period=12, ppa_end_period=71,
+        ))
+        assert len(out.dscr_covenant_applicable) == 180

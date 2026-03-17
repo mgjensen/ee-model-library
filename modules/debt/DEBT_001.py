@@ -94,6 +94,16 @@ class Inputs(BaseModel):
         None, description="Monthly CFADS for DSCR calculation DKKk"
     )
 
+    # Dual DSCR covenant — PPA vs merchant period
+    dscr_covenant_ppa: Optional[float] = Field(
+        None, gt=0, description="DSCR covenant during PPA period. None = uses dscr_covenant."
+    )
+    dscr_covenant_merchant: Optional[float] = Field(
+        None, gt=0, description="DSCR covenant during merchant period. None = uses dscr_covenant."
+    )
+    ppa_start_period: Optional[int] = Field(None, ge=0, description="Period when PPA begins")
+    ppa_end_period: Optional[int] = Field(None, ge=0, description="Period when PPA ends (inclusive)")
+
     # Cash sweep (mandatory prepayment from excess CFADS)
     cash_sweep_pct: float = Field(
         0.0, ge=0.0, le=1.0,
@@ -168,6 +178,11 @@ class Outputs(BaseModel):
     closing_balance: list[float]    # DKKk — balance at end of period
     debt_service: list[float]       # DKKk — interest + principal + cash_sweep
     dscr_annual: list[float]        # Annual DSCR mapped to each period (nan if no CFADS)
+
+    # Dual DSCR covenant
+    dscr_covenant_applicable: list[float]  # Which covenant applies per period
+    covenant_breached_ppa: bool            # Breach during PPA period
+    covenant_breached_merchant: bool       # Breach during merchant period
 
     # Summary
     total_interest: float
@@ -469,6 +484,9 @@ def calculate_schedule(inputs: Inputs) -> Outputs:
             closing_balance=closing,
             debt_service=total_ds_with_sweep,
             dscr_annual=dscr_monthly,
+            dscr_covenant_applicable=[inputs.dscr_covenant] * n,
+            covenant_breached_ppa=False,
+            covenant_breached_merchant=False,
             total_interest=sum(interest_arr),
             total_principal=sum(principal_arr),
             total_cash_sweep=sum(sweep_arr),
@@ -529,6 +547,20 @@ def calculate_schedule(inputs: Inputs) -> Outputs:
     dscr_monthly = [float("nan")] * n
     min_dscr = float("nan")
     covenant_breached = False
+    covenant_breached_ppa = False
+    covenant_breached_merchant = False
+
+    # Determine applicable covenant per period
+    dual = inputs.dscr_covenant_ppa is not None and inputs.ppa_start_period is not None and inputs.ppa_end_period is not None
+    cov_ppa = inputs.dscr_covenant_ppa or inputs.dscr_covenant
+    cov_merchant = inputs.dscr_covenant_merchant or inputs.dscr_covenant
+    dscr_cov_applicable = [inputs.dscr_covenant] * n
+    if dual:
+        for p in range(n):
+            if inputs.ppa_start_period <= p <= inputs.ppa_end_period:
+                dscr_cov_applicable[p] = cov_ppa
+            else:
+                dscr_cov_applicable[p] = cov_merchant
 
     if inputs.cfads is not None:
         running_min = math.inf
@@ -543,8 +575,21 @@ def calculate_schedule(inputs: Inputs) -> Outputs:
                 dscr_monthly[p] = dscr
             if dscr < running_min:
                 running_min = dscr
-            if dscr < inputs.dscr_covenant:
-                covenant_breached = True
+
+            # Dual covenant check: use stricter covenant if year straddles
+            if dual:
+                year_cov = max(dscr_cov_applicable[p] for p in year_periods)
+                in_ppa = any(inputs.ppa_start_period <= p <= inputs.ppa_end_period for p in year_periods)
+                in_merchant = any(p < inputs.ppa_start_period or p > inputs.ppa_end_period for p in year_periods)
+                if dscr < year_cov:
+                    covenant_breached = True
+                if in_ppa and dscr < cov_ppa:
+                    covenant_breached_ppa = True
+                if in_merchant and dscr < cov_merchant:
+                    covenant_breached_merchant = True
+            else:
+                if dscr < inputs.dscr_covenant:
+                    covenant_breached = True
         min_dscr = running_min if running_min < math.inf else float("nan")
 
     final_bal = closing_arr[-1] if closing_arr else 0.0
@@ -573,6 +618,9 @@ def calculate_schedule(inputs: Inputs) -> Outputs:
         closing_balance=closing_arr,
         debt_service=total_ds_with_sweep,
         dscr_annual=dscr_monthly,
+        dscr_covenant_applicable=dscr_cov_applicable,
+        covenant_breached_ppa=covenant_breached_ppa,
+        covenant_breached_merchant=covenant_breached_merchant,
         total_interest=sum(interest_arr),
         total_principal=sum(principal_arr),
         total_cash_sweep=sum(sweep_arr),

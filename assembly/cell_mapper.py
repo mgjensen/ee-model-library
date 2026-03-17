@@ -217,6 +217,7 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
     ("Debt", "DEBT_001", "closing_balance"): 11,
     ("Debt", "DEBT_001", "debt_service"):    12,
     ("Debt", "DEBT_001", "dscr_annual"):     13,
+    ("Debt", "DEBT_001", "dscr_covenant_applicable"): 14,
 
     # ---- Debt sheet — DEBT_SCULPT_001 (rows 45–52) --------------------------
     ("Debt", "DEBT_SCULPT_001", "opening_balance"):      46,
@@ -476,6 +477,7 @@ FIELD_LABELS: dict[str, str] = {
     "closing_balance":  "Closing Balance",
     "debt_service":     "Debt Service",
     "dscr_annual":      "DSCR (annual)",
+    "dscr_covenant_applicable": "DSCR Covenant (applicable)",
     # VAT_FACILITY_001
     "vat_paid":             "VAT Paid",
     "vat_refund":           "VAT Refund",
