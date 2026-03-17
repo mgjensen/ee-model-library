@@ -142,5 +142,13 @@
     "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
     "technologies": ["PV", "BESS", "WIND", "*"],
     "path": "modules/debt/DSRA_001.py"
+  },
+  "BESS_REPOW_001": {
+    "module_id": "BESS_REPOW_001",
+    "version": "1.0",
+    "tier": "detailed",
+    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
+    "technologies": ["BESS", "*"],
+    "path": "modules/capex/BESS_REPOW_001.py"
   }
 }

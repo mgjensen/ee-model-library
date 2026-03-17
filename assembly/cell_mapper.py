@@ -40,6 +40,7 @@ MODULE_SHEET: dict[str, str] = {
     "OPEX_002":  "Costs",
     "OPEX_003":  "Costs",
     "CAPEX_001": "Costs",
+    "BESS_REPOW_001": "Costs",
     "DEBT_001":  "Debt",
     "DEBT_SCULPT_001": "Debt",
     "SHL_001":   "Debt",
@@ -179,6 +180,15 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
     ("Costs", "CAPEX_001", "other"):               32,
     ("Costs", "CAPEX_001", "total_capex_monthly"): 33,
     ("Costs", "CAPEX_001", "cumulative_capex"):    34,
+
+    # ---- Costs sheet — BESS_REPOW_001 (rows 44–50) --------------------------
+    ("Costs", "BESS_REPOW_001", "repowering_cost_monthly"):          44,
+    ("Costs", "BESS_REPOW_001", "pre_repowering_flag"):              45,
+    ("Costs", "BESS_REPOW_001", "post_repowering_flag"):             46,
+    ("Costs", "BESS_REPOW_001", "tax_depreciation_monthly"):         47,
+    ("Costs", "BESS_REPOW_001", "tax_asset_base_eop"):               48,
+    ("Costs", "BESS_REPOW_001", "accounting_depreciation_monthly"):  49,
+    ("Costs", "BESS_REPOW_001", "accounting_asset_base_eop"):        50,
 
     # ---- Debt sheet — DEBT_001 (rows 5–13) ----------------------------------
     ("Debt", "DEBT_001", "opening_balance"):  6,
@@ -365,6 +375,14 @@ FIELD_LABELS: dict[str, str] = {
     "contingency":         "Contingency",
     "total_capex_monthly": "Total CAPEX (monthly)",
     "cumulative_capex":    "Cumulative CAPEX",
+    # BESS_REPOW_001
+    "repowering_cost_monthly":          "BESS Repowering Cost",
+    "pre_repowering_flag":              "Pre-Repowering Flag",
+    "post_repowering_flag":             "Post-Repowering Flag",
+    "tax_depreciation_monthly":         "Tax Depreciation (repowering)",
+    "tax_asset_base_eop":               "Tax Asset Base EoP (repowering)",
+    "accounting_depreciation_monthly":  "Accounting Depreciation (repowering)",
+    "accounting_asset_base_eop":        "Accounting Asset Base EoP (repowering)",
     # DEBT_001
     "opening_balance":  "Opening Balance",
     "drawdown":         "Drawdown",

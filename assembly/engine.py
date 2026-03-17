@@ -38,6 +38,7 @@ import modules.costs.OPEX_001 as OPEX_001
 import modules.costs.OPEX_002 as OPEX_002
 import modules.costs.OPEX_003 as OPEX_003
 import modules.capex.CAPEX_001 as CAPEX_001
+import modules.capex.BESS_REPOW_001 as BESS_REPOW_001
 import modules.debt.DEBT_001 as DEBT_001
 import modules.debt.DEBT_SCULPT_001 as DEBT_SCULPT_001
 import modules.debt.SHL_001 as SHL_001
@@ -135,6 +136,7 @@ class ProjectConfig(BaseModel):
     opex_bess: Optional[OPEX_002.Inputs] = None   # OPEX_002
     opex_wind: Optional[OPEX_003.Inputs] = None   # OPEX_003
     capex:    Optional[CAPEX_001.Inputs] = None   # CAPEX_001
+    bess_repow: Optional[BESS_REPOW_001.Inputs] = None  # BESS_REPOW_001
     debt:     Optional[DEBT_001.Inputs]  = None   # DEBT_001
     debt_sculpt: Optional[DEBT_SCULPT_001.Inputs] = None  # DEBT_SCULPT_001
     shl:      Optional[SHL_001.Inputs]   = None   # SHL_001
@@ -261,6 +263,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
         out["CAPEX_001"] = CAPEX_001.calculate(_inject_timeline(config.capex, tl))
 
     # ------------------------------------------------------------------
+    # Step 8b: BESS_REPOW_001 — BESS battery stack repowering
+    # ------------------------------------------------------------------
+    if config.bess_repow is not None:
+        out["BESS_REPOW_001"] = BESS_REPOW_001.calculate(
+            _inject_timeline(config.bess_repow, tl)
+        )
+
+    # ------------------------------------------------------------------
     # Step 7: DEBT_001 — debt schedule (no dependencies)
     # ------------------------------------------------------------------
     if config.debt is not None:
@@ -335,6 +345,9 @@ def run(config: ProjectConfig) -> AssemblyResult:
         elif "CAPEX_001" in out:
             capex_monthly = out["CAPEX_001"].total_capex_monthly
             capex_by_bucket = [capex_monthly] + [_zeros(n) for _ in range(6)]
+            # Wire BESS repowering cost into bucket 6
+            if "BESS_REPOW_001" in out:
+                capex_by_bucket[6] = out["BESS_REPOW_001"].repowering_cost_monthly
         else:
             capex_by_bucket = [_zeros(n) for _ in range(7)]
             result.warnings.append(
@@ -370,6 +383,10 @@ def run(config: ProjectConfig) -> AssemblyResult:
         gross_rev = _add_series(rev_pv_net, rev_bess_net, rev_wind_net, n=n)
         total_opex_combined = _add_series(opex_pv_tot, opex_bess_tot, opex_wind_tot, n=n)
         dep = tax_out.tax_depreciation if tax_out else _zeros(n)
+        # Add BESS repowering accounting depreciation
+        repow_out = out.get("BESS_REPOW_001")
+        if repow_out:
+            dep = [dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
         interest = debt_out.interest if debt_out else _zeros(n)
         tax_charge = tax_out.tax_charge_accrued if tax_out else _zeros(n)
 
@@ -395,15 +412,23 @@ def run(config: ProjectConfig) -> AssemblyResult:
         capex_out = out.get("CAPEX_001")
         sc = config.statements
 
+        repow_out = out.get("BESS_REPOW_001")
+        cf_dep = tax_out.tax_depreciation if tax_out else _zeros(n)
+        if repow_out:
+            cf_dep = [cf_dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
+        cf_capex = capex_out.total_capex_monthly if capex_out else _zeros(n)
+        if repow_out:
+            cf_capex = [cf_capex[p] + repow_out.repowering_cost_monthly[p] for p in range(n)]
+
         cf_inputs = CF_001.Inputs(
             periods=n,
             start_year=tl.start_year,
             start_month=tl.start_month,
             opening_cash_DKKk=sc.opening_cash_DKKk,
             net_income=pl_out.net_income,
-            depreciation=tax_out.tax_depreciation if tax_out else _zeros(n),
+            depreciation=cf_dep,
             working_capital_change=sc.working_capital_change or [],
-            capex_monthly=capex_out.total_capex_monthly if capex_out else _zeros(n),
+            capex_monthly=cf_capex,
             debt_drawdown=debt_out.drawdown if debt_out else [],
             principal_repayment=debt_out.principal if debt_out else [],
             interest_paid=debt_out.interest if debt_out else _zeros(n),
@@ -422,14 +447,21 @@ def run(config: ProjectConfig) -> AssemblyResult:
         capex_out = out.get("CAPEX_001")
         sc = config.statements
 
+        repow_out = out.get("BESS_REPOW_001")
+        bs_capex = capex_out.total_capex_monthly if capex_out else _zeros(n)
+        bs_dep = tax_out.tax_depreciation if tax_out else _zeros(n)
+        if repow_out:
+            bs_capex = [bs_capex[p] + repow_out.repowering_cost_monthly[p] for p in range(n)]
+            bs_dep = [bs_dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
+
         bs_kwargs: dict = dict(
             periods=n,
             start_year=tl.start_year,
             start_month=tl.start_month,
             opening_contributed_equity_DKKk=sc.opening_contributed_equity_DKKk,
             opening_retained_earnings_DKKk=sc.opening_retained_earnings_DKKk,
-            capex_monthly=capex_out.total_capex_monthly if capex_out else _zeros(n),
-            depreciation_monthly=tax_out.tax_depreciation if tax_out else _zeros(n),
+            capex_monthly=bs_capex,
+            depreciation_monthly=bs_dep,
             closing_cash=cf_out.closing_cash,
             debt_closing_balance=debt_out.closing_balance if debt_out else _zeros(n),
             net_income=pl_out.net_income,
