@@ -1,30 +1,61 @@
 """
 assembly/cell_mapper.py
 
-Maps module output fields to Excel cell references in the standard 5-sheet workbook layout.
+Maps module output fields to Excel cell references in the standard workbook layout.
 
 Sheet layout:
-    "Revenue"    — REV_001, REV_002
-    "Costs"      — OPEX_001, OPEX_002, CAPEX_001
-    "Debt"       — DEBT_001, TAX_001, WACC_001 (scalars in col B)
-    "Statements" — PL_001, CF_001, BS_001, IRR_001
+    "Revenue"     — REV_001, REV_002, REV_003, PPA_CFD_001, PRICE_CURVES_001
+    "Costs"       — OPEX_001, OPEX_002, OPEX_003, CAPEX_001, BESS_REPOW_001
+    "Debt"        — DEBT_001, TAX_001, WACC_001 (scalars in col F)
+    "FS_Monthly"  — PL_001, CF_001, BS_001, IRR_001 (monthly time series)
+    "FS_Annual"   — same modules, annual aggregation
 
-Column conventions (1-based):
-    Col 1 (A) = field label
-    Col 2 (B) = units string or scalar assumption value
-    Col 3 (C) = period 0
-    Col 4 (D) = period 1
-    ...
+Column layout — EE Standard (matches PwC/EY reference models):
+    A-D   narrow indent spacers         cols 1-4
+    E     row description / label       col 5
+    F     constant / assumption         col 6
+    G     unit                          col 7
+    H     notes (hidden, outline 1)     col 8
+    I     source (hidden, outline 1)    col 9
+    J     total / lifetime avg          col 10
+    K     spacer                        col 11
+    L+    monthly time series           col 12 = period 0
 
 Row conventions:
-    Row 1 = project name / sheet title
-    Row 2 = blank
-    Row 3 = period indices (0, 1, 2, ...)
-    Row 4 = date labels (Jan-2026, Feb-2026, ...)
-    Row 5+ = data rows per the ROW_MAP below
+    Rows 1-6 = header block (title, dates, phases, year, column headers, spacer)
+    Row 7+   = data rows per the ROW_MAP below
 """
 
 from __future__ import annotations
+
+from openpyxl.utils import get_column_letter
+
+# ============================================================================
+# COLUMN LAYOUT - EE Standard (matches PwC/EY reference models)
+# ============================================================================
+
+COL_LABEL    = 5   # E — row description / label
+COL_CONSTANT = 6   # F — constant / assumption value
+COL_UNIT     = 7   # G — unit
+COL_NOTES    = 8   # H — notes (hidden, outline level 1)
+COL_SOURCE   = 9   # I — source (hidden, outline level 1)
+COL_TOTAL    = 10  # J — total / lifetime average
+COL_SPACER   = 11  # K — spacer before time series
+COL_PERIOD_0 = 12  # L — first period column
+
+COL_WIDTHS = {
+    1: 1.3, 2: 1.3, 3: 1.3, 4: 1.3,  # A-D spacers
+    5: 40.5,   # E label
+    6: 12.5,   # F constant
+    7: 14.5,   # G unit
+    8: 45.5,   # H notes (hidden)
+    9: 45.5,   # I source (hidden)
+    10: 15.5,  # J total
+    11: 2.5,   # K spacer
+    # L+ set dynamically at 11.5 each
+}
+
+HIDDEN_COLS = {8, 9}  # H and I, outline level 1
 
 
 # ============================================================================
@@ -304,9 +335,7 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
     ("Debt", "TAX_DE_001", "tax_charge_accrued"):      96,
     ("Debt", "TAX_DE_001", "tax_paid"):                97,
 
-    # ---- Debt sheet — WACC_001 scalars (col B, rows 22–30) -----------------
-    # These are written to col B only (no time-series). Row numbers are the same
-    # convention but the writer uses col 2 (B) instead of the period columns.
+    # ---- Debt sheet — WACC_001 scalars (col F, rows 22–30) -----------------
     ("Debt", "WACC_001", "wacc"):                    22,
     ("Debt", "WACC_001", "blended_cost_of_equity"):  23,
     ("Debt", "WACC_001", "ppa_cost_of_equity"):      24,
@@ -657,22 +686,18 @@ FIELD_UNITS_DEFAULT = "DKKk"
 # FUNCTIONS
 # ============================================================================
 
-def col_letter(col_index: int) -> str:
-    """Convert 1-based column index to Excel letter(s). 1→'A', 27→'AA'."""
-    result = ""
-    while col_index > 0:
-        col_index, remainder = divmod(col_index - 1, 26)
-        result = chr(65 + remainder) + result
-    return result
+def period_col(period: int) -> int:
+    """1-based column index for period (0-indexed). Period 0 = col L = 12."""
+    return COL_PERIOD_0 + period
 
 
-def period_col(period_index: int) -> int:
-    """Convert 0-based period index to 1-based column index. Period 0 → col 3 (C)."""
-    return period_index + 3
+def col_letter(col: int) -> str:
+    """Convert 1-based column index to Excel letter(s). Uses openpyxl."""
+    return get_column_letter(col)
 
 
 def get_cell(sheet: str, row: int, col: int) -> str:
-    """Return cross-sheet cell reference, e.g. 'Revenue!C6'."""
+    """Return cross-sheet cell reference, e.g. 'Revenue!L6'."""
     return f"{sheet}!{col_letter(col)}{row}"
 
 

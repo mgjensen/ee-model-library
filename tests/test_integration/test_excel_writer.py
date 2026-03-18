@@ -13,7 +13,10 @@ from assembly.engine import (
     run,
 )
 from assembly.excel_writer import write_workbook, SHEETS, _period_to_label
-from assembly.cell_mapper import get_row, period_col, col_letter
+from assembly.cell_mapper import (
+    get_row, period_col, col_letter,
+    COL_LABEL, COL_UNIT, COL_CONSTANT, COL_TOTAL, COL_PERIOD_0,
+)
 import modules.revenue.REV_001 as REV_001
 import modules.costs.OPEX_001 as OPEX_001
 import modules.capex.CAPEX_001 as CAPEX_001
@@ -114,43 +117,61 @@ def test_sheet_order(written_wb):
     assert wb.sheetnames == SHEETS
 
 
+def test_no_old_statements_sheet(written_wb):
+    wb, *_ = written_wb
+    assert "Statements" not in wb.sheetnames
+
+
 # ---------------------------------------------------------------------------
-# Header rows
+# Header rows — new column layout
 # ---------------------------------------------------------------------------
 
-def test_header_row1_contains_project_name(written_wb):
+def test_header_row1_contains_sheet_name(written_wb):
     wb, result, *_ = written_wb
     ws = wb["Revenue"]
-    assert ws.cell(row=1, column=1).value == result.project_name
+    assert ws.cell(row=1, column=COL_LABEL).value == "Revenue"
 
 
-def test_period_row3_starts_at_zero(written_wb):
+def test_header_row5_description(written_wb):
     wb, *_ = written_wb
     ws = wb["Revenue"]
-    assert ws.cell(row=3, column=3).value == 0   # col C = period 0
+    assert ws.cell(row=5, column=COL_LABEL).value == "Description"
 
 
-def test_period_row3_increments(written_wb):
-    wb, result, *_ = written_wb
-    ws = wb["Revenue"]
-    assert ws.cell(row=3, column=4).value == 1   # col D = period 1
-    assert ws.cell(row=3, column=5).value == 2
-
-
-def test_date_row4_jan_2026(written_wb):
+def test_header_row5_constant(written_wb):
     wb, *_ = written_wb
     ws = wb["Revenue"]
-    assert ws.cell(row=4, column=3).value == "Jan-2026"
+    assert ws.cell(row=5, column=COL_CONSTANT).value == "Constant"
 
 
-def test_date_row4_feb_2026(written_wb):
+def test_header_row5_unit(written_wb):
     wb, *_ = written_wb
     ws = wb["Revenue"]
-    assert ws.cell(row=4, column=4).value == "Feb-2026"
+    assert ws.cell(row=5, column=COL_UNIT).value == "Unit"
+
+
+def test_header_row5_total(written_wb):
+    wb, *_ = written_wb
+    ws = wb["Revenue"]
+    assert ws.cell(row=5, column=COL_TOTAL).value == "Total / avg."
+
+
+def test_freeze_panes_l7(written_wb):
+    wb, *_ = written_wb
+    for sheet_name in ["Revenue", "Costs", "Debt", "FS_Monthly"]:
+        ws = wb[sheet_name]
+        assert str(ws.freeze_panes) == "L7", f"{sheet_name} freeze panes wrong"
+
+
+def test_hidden_columns(written_wb):
+    wb, *_ = written_wb
+    ws = wb["Revenue"]
+    assert ws.column_dimensions["H"].hidden is True
+    assert ws.column_dimensions["I"].hidden is True
 
 
 # ---------------------------------------------------------------------------
-# Data rows — Revenue sheet
+# Data rows — Revenue sheet (new column positions)
 # ---------------------------------------------------------------------------
 
 def test_rev001_net_revenue_written(written_wb):
@@ -163,20 +184,28 @@ def test_rev001_net_revenue_written(written_wb):
     assert actual == pytest.approx(expected, rel=1e-6)
 
 
-def test_rev001_label_in_col_a(written_wb):
+def test_rev001_label_in_col_e(written_wb):
     wb, *_ = written_wb
     ws = wb["Revenue"]
     row = get_row("REV_001", "net_revenue")
-    label = ws.cell(row=row, column=1).value
+    label = ws.cell(row=row, column=COL_LABEL).value
     assert label is not None and "revenue" in label.lower()
 
 
-def test_rev001_units_in_col_b(written_wb):
+def test_rev001_units_in_col_g(written_wb):
     wb, *_ = written_wb
     ws = wb["Revenue"]
     row = get_row("REV_001", "net_revenue")
-    units = ws.cell(row=row, column=2).value
+    units = ws.cell(row=row, column=COL_UNIT).value
     assert units == "DKKk"
+
+
+def test_rev001_total_in_col_j(written_wb):
+    wb, result, *_ = written_wb
+    ws = wb["Revenue"]
+    row = get_row("REV_001", "net_revenue")
+    total = ws.cell(row=row, column=COL_TOTAL).value
+    assert total is not None and isinstance(total, (int, float))
 
 
 # ---------------------------------------------------------------------------
@@ -205,12 +234,12 @@ def test_capex_cumulative_written(written_wb):
 
 
 # ---------------------------------------------------------------------------
-# Data rows — Statements sheet
+# Data rows — FS_Monthly sheet (replaces Statements)
 # ---------------------------------------------------------------------------
 
 def test_pl_net_income_written(written_wb):
     wb, result, *_ = written_wb
-    ws = wb["Statements"]
+    ws = wb["FS_Monthly"]
     row = get_row("PL_001", "net_income")
     pl_out = result.outputs["PL_001"]
     expected = pl_out.net_income[0]
@@ -222,12 +251,28 @@ def test_irr_cumulative_pfcf_written(written_wb):
     wb, result, *_ = written_wb
     if "IRR_001" not in result.outputs:
         pytest.skip("IRR_001 not in outputs")
-    ws = wb["Statements"]
+    ws = wb["FS_Monthly"]
     row = get_row("IRR_001", "cumulative_pfcf")
     irr_out = result.outputs["IRR_001"]
     expected = irr_out.cumulative_pfcf[0]
     actual = ws.cell(row=row, column=period_col(0)).value
     assert actual == pytest.approx(expected, rel=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# FS_Annual sheet
+# ---------------------------------------------------------------------------
+
+def test_fs_annual_exists(written_wb):
+    wb, *_ = written_wb
+    assert "FS_Annual" in wb.sheetnames
+
+
+def test_fs_annual_has_year_in_row2(written_wb):
+    wb, *_ = written_wb
+    ws = wb["FS_Annual"]
+    yr = ws.cell(row=2, column=COL_PERIOD_0).value
+    assert isinstance(yr, int) and yr == 2026
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +282,7 @@ def test_irr_cumulative_pfcf_written(written_wb):
 def test_summary_sheet_has_project_name(written_wb):
     wb, result, *_ = written_wb
     ws = wb["Summary"]
-    assert ws.cell(row=1, column=1).value == result.project_name
+    assert ws.cell(row=1, column=COL_LABEL).value == result.project_name
 
 
 def test_summary_has_irr_entry(written_wb):
@@ -245,7 +290,7 @@ def test_summary_has_irr_entry(written_wb):
     if "IRR_001" not in result.outputs:
         pytest.skip("IRR_001 not in outputs")
     ws = wb["Summary"]
-    labels = [ws.cell(row=r, column=1).value for r in range(1, 30)]
+    labels = [ws.cell(row=r, column=COL_LABEL).value for r in range(1, 30)]
     assert any(l and "irr" in str(l).lower() for l in labels)
 
 
@@ -254,7 +299,7 @@ def test_summary_has_npv_entry(written_wb):
     if "IRR_001" not in result.outputs:
         pytest.skip("IRR_001 not in outputs")
     ws = wb["Summary"]
-    labels = [ws.cell(row=r, column=1).value for r in range(1, 30)]
+    labels = [ws.cell(row=r, column=COL_LABEL).value for r in range(1, 30)]
     assert any(l and "npv" in str(l).lower() for l in labels)
 
 
@@ -288,6 +333,16 @@ def test_disabled_module_rows_have_no_data(tmp_path):
     for p in range(n):
         val = ws.cell(row=row, column=period_col(p)).value
         assert val is None, f"Expected None at REV_002 row period {p}, got {val}"
+
+
+# ---------------------------------------------------------------------------
+# Cover sheet
+# ---------------------------------------------------------------------------
+
+def test_cover_sheet_has_project_name(written_wb):
+    wb, result, *_ = written_wb
+    ws = wb["Cover"]
+    assert ws.cell(row=1, column=COL_LABEL).value == result.project_name
 
 
 # ---------------------------------------------------------------------------

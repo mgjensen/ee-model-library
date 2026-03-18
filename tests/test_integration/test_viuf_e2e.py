@@ -235,4 +235,5 @@ def test_xlsx_revenue_sheet_has_data(viuf_workbook):
 def test_xlsx_summary_sheet_has_project_name(viuf_workbook):
     wb, result = viuf_workbook
     ws = wb["Summary"]
-    assert ws.cell(row=1, column=1).value == result.project_name
+    from assembly.cell_mapper import COL_LABEL
+    assert ws.cell(row=1, column=COL_LABEL).value == result.project_name

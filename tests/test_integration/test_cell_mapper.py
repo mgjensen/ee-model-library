@@ -12,11 +12,13 @@ from assembly.cell_mapper import (
     get_label,
     get_units,
     FIELD_UNITS_DEFAULT,
+    COL_LABEL,
+    COL_PERIOD_0,
 )
 
 
 # ---------------------------------------------------------------------------
-# col_letter
+# col_letter (now uses openpyxl get_column_letter)
 # ---------------------------------------------------------------------------
 
 def test_col_letter_single_a():
@@ -44,19 +46,19 @@ def test_col_letter_triple_aaa():
 
 
 # ---------------------------------------------------------------------------
-# period_col
+# period_col — period 0 = col L = 12
 # ---------------------------------------------------------------------------
 
-def test_period_col_zero_is_col_c():
-    assert period_col(0) == 3   # col C
+def test_period_col_zero_is_col_l():
+    assert period_col(0) == 12   # col L
 
 
-def test_period_col_one_is_col_d():
-    assert period_col(1) == 4   # col D
+def test_period_col_one_is_col_m():
+    assert period_col(1) == 13   # col M
 
 
 def test_period_col_large():
-    assert period_col(471) == 474
+    assert period_col(471) == 483
 
 
 # ---------------------------------------------------------------------------
@@ -64,14 +66,13 @@ def test_period_col_large():
 # ---------------------------------------------------------------------------
 
 def test_get_cell_format():
-    assert get_cell("Revenue", 6, 3) == "Revenue!C6"
+    assert get_cell("Revenue", 6, 12) == "Revenue!L6"
 
 
 def test_get_cell_period_zero_net_production():
-    # REV_001.net_production_MWh → row 6; period 0 → col C
     row = get_row("REV_001", "net_production_MWh")
     col = period_col(0)
-    assert get_cell("Revenue", row, col) == "Revenue!C6"
+    assert get_cell("Revenue", row, col) == "Revenue!L6"
 
 
 # ---------------------------------------------------------------------------
