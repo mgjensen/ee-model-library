@@ -102,3 +102,41 @@ assert isinstance(yr_last, int) and yr_last == 2045, \
     f"FAIL: FS_Annual col 31 should be 2045, got {yr_last!r}"
 
 print("All structural assertions PASSED.")
+
+# --- Prompt 3: Layout layer assertions ---
+wb2 = openpyxl.load_workbook("outputs/format_smoke_test.xlsx")
+
+# Tab colors
+assert wb2["Cover"].sheet_properties.tabColor is not None, \
+    "FAIL: Cover tab has no color"
+assert wb2["Revenue"].sheet_properties.tabColor is not None, \
+    "FAIL: Revenue tab has no color"
+assert wb2["FS_Monthly"].sheet_properties.tabColor is not None, \
+    "FAIL: FS_Monthly tab has no color"
+
+# Print setup on Revenue
+ws_rev = wb2["Revenue"]
+assert ws_rev.page_setup.orientation == "landscape", \
+    f"FAIL: Revenue orientation = '{ws_rev.page_setup.orientation}'"
+assert ws_rev.sheet_properties.pageSetUpPr.fitToPage == True, \
+    "FAIL: Revenue fitToPage not set"
+assert ws_rev.print_title_rows in ("1:6", "$1:$6"), \
+    f"FAIL: Revenue print_title_rows = '{ws_rev.print_title_rows}'"
+
+# Row heights on Revenue
+assert ws_rev.row_dimensions[5].height == 20, \
+    f"FAIL: Revenue row 5 height = {ws_rev.row_dimensions[5].height}, expected 20"
+
+# Row grouping — at least some rows should be grouped on Debt sheet
+ws_debt = wb2["Debt"]
+grouped = [r for r, rd in ws_debt.row_dimensions.items()
+           if rd.outline_level and rd.outline_level > 0]
+assert len(grouped) > 0, \
+    "FAIL: no grouped rows found on Debt sheet - row grouping not applied"
+
+# FS_Annual print setup
+ws_fsa = wb2["FS_Annual"]
+assert ws_fsa.page_setup.orientation == "landscape", \
+    "FAIL: FS_Annual orientation should be landscape"
+
+print("All layout assertions PASSED.")
