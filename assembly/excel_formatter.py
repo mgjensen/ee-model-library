@@ -45,6 +45,9 @@ FONT_IMPORT         = "0000FF"  # blue   — row imported from another sheet
 FONT_EXPORT         = "FF0000"  # red    — row exported to another sheet
 FONT_WHITE          = "FFFFFF"  # white  — on dark fills
 
+# Sub-section labels
+FILL_SUBSECTION_LABEL = "A6A6A6"  # mid grey — matches EE reference model
+
 # Cover accent
 FILL_COVER_HEADER   = "008080"  # teal   — project banner
 FILL_COVER_KPI      = "EBF3FB"  # light blue — KPI block background
@@ -264,6 +267,24 @@ def _format_section_headers(ws, sheet_name: str) -> None:
         ws.cell(row=row_num, column=COL_LABEL).value = label
 
 
+def _format_subsection_labels(ws, sheet_name: str) -> None:
+    """Apply grey fill and white bold font to sub-section label rows.
+
+    These rows contain only a label in col E. Apply fill across
+    cols A through G (the label area, not the time series columns).
+    """
+    from assembly.cell_mapper import SUBSECTION_LABELS
+
+    for (sht, row_num), label in SUBSECTION_LABELS.items():
+        if sht != sheet_name:
+            continue
+        for col in range(1, COL_UNIT + 1):  # cols A through G
+            cell = ws.cell(row=row_num, column=col)
+            cell.fill = _fill(FILL_SUBSECTION_LABEL)
+            cell.font = _font(FONT_WHITE, bold=True)
+        ws.row_dimensions[row_num].height = 16
+
+
 # ============================================================================
 # LAYOUT FUNCTIONS (Prompt 3)
 # ============================================================================
@@ -305,18 +326,23 @@ def _apply_row_grouping(ws, sheet_name: str) -> None:
 
     Sections with fewer than 4 rows are not grouped.
     """
+    from assembly.cell_mapper import SUBSECTION_LABELS
+
     logical = "Statements" if sheet_name in ("FS_Monthly", "FS_Annual") else sheet_name
     module_rows: dict[str, list[int]] = {}
     for (sht, mod, field), row in ROW_MAP.items():
         if sht == logical:
             module_rows.setdefault(mod, []).append(row)
 
+    # Subsection label rows must never be grouped
+    label_rows = {row for (sht, row) in SUBSECTION_LABELS if sht == sheet_name}
+
     for mod_id, rows in module_rows.items():
         rows_sorted = sorted(rows)
         if len(rows_sorted) < 4:
             continue  # too few rows to group meaningfully
 
-        detail_rows = rows_sorted[1:-1]  # everything between first and last
+        detail_rows = [r for r in rows_sorted[1:-1] if r not in label_rows]
         for r in detail_rows:
             ws.row_dimensions[r].outline_level = 1
             ws.row_dimensions[r].hidden = True
@@ -447,6 +473,7 @@ def apply_formatting(wb, result) -> None:
         _format_header_rows(ws, n_cols)
         _format_data_rows(ws, sheet_name, n_cols)
         _format_section_headers(ws, sheet_name)
+        _format_subsection_labels(ws, sheet_name)
         _apply_row_grouping(ws, sheet_name)
         _apply_row_heights(ws, sheet_name)
         _apply_print_setup(ws)

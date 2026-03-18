@@ -140,3 +140,31 @@ assert ws_fsa.page_setup.orientation == "landscape", \
     "FAIL: FS_Annual orientation should be landscape"
 
 print("All layout assertions PASSED.")
+
+# --- Prompt 4: Sub-section label assertions ---
+from assembly.cell_mapper import SUBSECTION_LABELS, COL_LABEL
+
+wb3 = openpyxl.load_workbook("outputs/format_smoke_test.xlsx")
+
+# Verify subsection labels are written and formatted on FS_Monthly
+ws_fsm = wb3["FS_Monthly"]
+for (sheet, row_num), label in SUBSECTION_LABELS.items():
+    if sheet != "FS_Monthly":
+        continue
+    cell = ws_fsm.cell(row=row_num, column=COL_LABEL)
+    assert cell.value == label, \
+        f"FAIL: FS_Monthly row {row_num} col E = '{cell.value}', expected '{label}'"
+    fill = cell.fill.fgColor.rgb if cell.fill and cell.fill.fgColor else ""
+    assert "A6A6A6" in fill.upper(), \
+        f"FAIL: FS_Monthly row {row_num} fill = '{fill}', expected A6A6A6"
+
+# Verify labels are not grouped (outline_level must be 0)
+for (sheet, row_num), label in SUBSECTION_LABELS.items():
+    if sheet != "FS_Monthly":
+        continue
+    rd = ws_fsm.row_dimensions.get(row_num)
+    outline = rd.outline_level if rd else 0
+    assert outline == 0, \
+        f"FAIL: FS_Monthly row {row_num} ('{label}') is grouped - must be visible"
+
+print("All sub-section label assertions PASSED.")

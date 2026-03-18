@@ -276,6 +276,25 @@ def _apply_column_formatting(ws, n_periods: int) -> None:
 
 
 # ============================================================================
+# SUB-SECTION LABELS
+# ============================================================================
+
+def _write_subsection_labels(ws, sheet_name: str) -> None:
+    """Write sub-section label text into pre-planned label rows.
+
+    These rows sit between module sections and contain only a label
+    in col E. They are formatted by excel_formatter.py separately.
+    They must NOT conflict with ROW_MAP data rows.
+    """
+    from assembly.cell_mapper import SUBSECTION_LABELS
+
+    for (sht, row_num), label in SUBSECTION_LABELS.items():
+        if sht != sheet_name:
+            continue
+        ws.cell(row=row_num, column=COL_LABEL, value=label)
+
+
+# ============================================================================
 # SHEET WRITERS
 # ============================================================================
 
@@ -511,10 +530,12 @@ def write_workbook(
         _write_time_series_rows(ws, result)
         if sheet_name == "Debt":
             _write_wacc_scalars(ws, result)
+        _write_subsection_labels(ws, sheet_name)
         _apply_column_formatting(ws, n)
         ws.freeze_panes = "L7"
 
     _write_fs_annual(wb["FS_Annual"], result, config)
+    _write_subsection_labels(wb["FS_Annual"], "FS_Annual")
     _write_summary(wb["Summary"], result)
 
     # Step 3: Write Cover LAST (needs Summary to be populated for KPI refs)

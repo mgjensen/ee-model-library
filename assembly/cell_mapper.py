@@ -440,6 +440,46 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
 
 
 # ============================================================================
+# SUB-SECTION LABELS — (sheet_name, row_number) → label_text
+# Row numbers verified conflict-free against ROW_MAP before commit.
+# FS_Monthly and FS_Annual share identical row numbers (same ROW_MAP layout).
+# ============================================================================
+
+SUBSECTION_LABELS: dict[tuple[str, int], str] = {
+    # Revenue sheet
+    ("Revenue",    28): "Production & Revenue",
+
+    # Costs sheet
+    ("Costs",      18): "Operating Costs",
+
+    # Debt sheet
+    ("Debt",       20): "Senior Debt",
+
+    # FS_Monthly — sub-section dividers within financial statements
+    ("FS_Monthly", 20):  "Revenue",
+    ("FS_Monthly", 23):  "Operating Costs",
+    ("FS_Monthly", 57):  "Depreciation",
+    ("FS_Monthly", 63):  "Finance Costs",
+    ("FS_Monthly", 79):  "Assets",
+    ("FS_Monthly", 92):  "Liabilities & Equity",
+    ("FS_Monthly", 111): "Operating Cash Flow",
+    ("FS_Monthly", 122): "Investing Cash Flow",
+    ("FS_Monthly", 128): "Financing Cash Flow",
+
+    # FS_Annual — mirrors FS_Monthly row numbers
+    ("FS_Annual",  20):  "Revenue",
+    ("FS_Annual",  23):  "Operating Costs",
+    ("FS_Annual",  57):  "Depreciation",
+    ("FS_Annual",  63):  "Finance Costs",
+    ("FS_Annual",  79):  "Assets",
+    ("FS_Annual",  92):  "Liabilities & Equity",
+    ("FS_Annual",  111): "Operating Cash Flow",
+    ("FS_Annual",  122): "Investing Cash Flow",
+    ("FS_Annual",  128): "Financing Cash Flow",
+}
+
+
+# ============================================================================
 # FIELD METADATA
 # ============================================================================
 
