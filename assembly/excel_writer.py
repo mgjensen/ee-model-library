@@ -27,7 +27,7 @@ Column layout (EE Standard):
 from __future__ import annotations
 
 import math
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import openpyxl
@@ -49,6 +49,8 @@ from assembly.cell_mapper import (
     period_col,
 )
 from assembly.engine import AssemblyResult, ProjectConfig
+from assembly.excel_formatter import apply_formatting
+from assembly.cover_writer import write_cover
 
 # ============================================================================
 # CONSTANTS
@@ -134,7 +136,7 @@ def _period_end_date(start_year: int, start_month: int, period: int) -> date:
     if month == 12:
         return date(year, 12, 31)
     else:
-        return date(year, month + 1, 1).replace(day=1) - __import__('datetime').timedelta(days=1)
+        return date(year, month + 1, 1) - timedelta(days=1)
 
 
 def _safe(value: Any) -> Any:
@@ -491,39 +493,33 @@ def write_workbook(
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
 
+    # Step 1: Create all sheets upfront in display order
+    for name in SHEETS:
+        wb.create_sheet(name)
+
     n  = result.periods
     sy = result.start_year
     sm = result.start_month
 
-    # Get capex_monthly for phase labels
     capex_out = result.outputs.get("CAPEX_001")
     capex_monthly = capex_out.total_capex_monthly if capex_out else None
 
-    for sheet_name in SHEETS:
-        ws = wb.create_sheet(sheet_name)
-
-        if sheet_name == "Cover":
-            # Stub: project name in col E row 1, bold
-            ws.cell(row=1, column=COL_LABEL,
-                    value=result.project_name).font = Font(bold=True, size=14)
-            continue
-
-        if sheet_name == "Summary":
-            _write_summary(ws, result)
-            continue
-
-        if sheet_name == "FS_Annual":
-            _write_fs_annual(ws, result, config)
-            continue
-
-        # Monthly calculation sheets: Revenue, Costs, Debt, FS_Monthly
+    # Step 2: Populate calculation sheets in dependency order
+    for sheet_name in ["Revenue", "Costs", "Debt", "FS_Monthly"]:
+        ws = wb[sheet_name]
         _write_header_rows(ws, sheet_name, n, sy, sm, capex_monthly=capex_monthly)
         _write_time_series_rows(ws, result)
-
         if sheet_name == "Debt":
             _write_wacc_scalars(ws, result)
-
         _apply_column_formatting(ws, n)
         ws.freeze_panes = "L7"
 
+    _write_fs_annual(wb["FS_Annual"], result, config)
+    _write_summary(wb["Summary"], result)
+
+    # Step 3: Write Cover LAST (needs Summary to be populated for KPI refs)
+    write_cover(wb["Cover"], result, config, wb)
+
+    # Step 4: Apply formatting and save
+    apply_formatting(wb, result)
     wb.save(output_path)
