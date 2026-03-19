@@ -1,89 +1,153 @@
-# CLAUDE.md — Instructions for Claude Code
+# CLAUDE.md
 
-This file tells Claude Code how to work with the `ee-model-library` repository.
-Place it in the repo root. Claude Code reads it automatically.
-
----
-
-## What this repo is
-
-A Python library that assembles production-ready Excel financial models for renewable energy projects (solar PV, BESS, wind). It has 14 calculation modules, an assembly engine that wires them together, and an Excel writer that produces `.xlsx` output.
+Python library that assembles production-ready Excel financial models for renewable energy projects (PV, BESS, Wind). Calculation modules → assembly engine → `.xlsx` output.
 
 **Owner:** Martin Graa Jennum, European Energy A/S
-**Language:** Python 3.11+, pure Python (no numpy/pandas in modules)
-**Key dependency:** Pydantic v2 for all Inputs/Outputs
+**Stack:** Python 3.11+, Pydantic v2, openpyxl, pytest, FastAPI (stubbed)
+**Currency:** DKKk throughout, except prices (DKK/MWh, EUR/MWh)
 
----
+## Architecture state: v1.x → v2.0
+
+The codebase is v1.x with per-type modules. A v2.0 generic architecture is planned.
+
+**CURRENT (v1.x):** 8 separate debt modules, 3 OPEX modules, 3 revenue modules. Module IDs use `_NNN` suffix (`DEBT_001`, `REV_001`). Files in `modules/debt/DEBT_001.py`, etc.
+**TARGET (v2.0):** 1 generic DEBT module, 1 generic OPEX module. Revenue and tax stay separate.
+
+**Rule:** Follow v1.x naming when editing existing code. Use v2.0 patterns only when Martin says "migrate" or "build generic." When in doubt, check imports in `engine.py`.
+
+## Commands
+
+```bash
+pip install -r requirements.txt
+python -m pytest tests/ -q                             # ALL tests — run before every commit
+python -m pytest tests/test_debt/test_DEBT_001.py -v   # specific module
+python -m pytest tests/ -k "sculpted" -v               # by keyword
+uvicorn api.main:app --reload                          # API at localhost:8000/docs
+```
+
+## Strict rules
+
+1. **Pure Python only** in modules. No numpy, no pandas. Use `math` from stdlib.
+2. **All time-series outputs: length == `inputs.periods`**. Period 0 = first month of project.
+3. **Pydantic v2**: `Field(...)` for required. `@model_validator(mode="after")` for array checks. Always `return self`.
+4. **Never break existing tests.** Full suite before every commit.
+5. **Never modify existing Outputs in a breaking way.** Add fields, don't rename or remove.
+6. **Modules never import other modules.** All inter-module data flows through `engine.py`.
+7. **Sequential module numbering**: REV_004 = new module, NOT REV_001 v2.
+8. **Timeline injection**: engine overrides `periods/start_year/start_month` from `TimelineConfig`.
+9. **Fix at source.** Never patch Excel output — fix the upstream module.
 
 ## Project structure
 
 ```
 ee-model-library/
-  api/main.py                    FastAPI app (POST /run, GET /modules, GET /health)
+  api/main.py                     FastAPI
   assembly/
-    engine.py                    Orchestrates 14 modules in dependency order
-    cell_mapper.py               (module, field) → Excel row/col position
-    excel_writer.py              openpyxl → 5-sheet .xlsx workbook
-    parser.py                    Reads operator .xlsx files into assumption dict
+    engine.py                     Orchestrates modules in dependency order
+    cell_mapper.py                (module, field) → Excel row/col + column constants
+    excel_writer.py               openpyxl → 7-sheet .xlsx workbook
+    excel_formatter.py            EE/F1F9 format standard (colors, borders, grouping, print)
+    cover_writer.py               Cover sheet with perspective-aware KPI blocks
+    parser.py                     Reads operator .xlsx
+    scenario_runner.py            Multi-scenario + portfolio aggregation
+    scenario_engine.py            Sensitivity + tornado charts
   modules/
-    core/WACC_001.py             Cost of capital (two-layer PPA/merchant)
-    revenue/REV_001.py           PV revenue (spot, 5 PPAs, GoO, tariffs, balancing)
-    revenue/REV_002.py           BESS revenue (discharge, charging, tariffs)
-    revenue/REV_003.py           Wind revenue (same structure as REV_001)
-    costs/OPEX_001.py            PV OPEX (11 components)
-    costs/OPEX_002.py            BESS OPEX (4 components)
-    costs/OPEX_003.py            Wind OPEX (5 components)
-    capex/CAPEX_001.py           6 cost buckets, S-curve drawdown
-    debt/DEBT_001.py             Senior debt (annuity/straight-line/bullet, DSCR)
-    tax/TAX_001.py               Danish corporate tax (declining balance, EBITDA cap)
-    statements/PL_001.py         Profit & Loss
-    statements/CF_001.py         Cash Flow (indirect method)
-    statements/BS_001.py         Balance Sheet
-    statements/IRR_001.py        DCF valuation (bisection IRR solver)
+    core/WACC_001.py
+    market/PRICE_CURVES_001.py
+    revenue/REV_001.py REV_002.py REV_003.py PPA_CFD_001.py
+    costs/OPEX_001.py OPEX_002.py OPEX_003.py
+    capex/CAPEX_001.py BESS_REPOW_001.py
+    debt/DEBT_001.py DEBT_SCULPT_001.py DEBT_LINEAR_001.py
+         CONSTR_FINANCE_001.py SHL_001.py VAT_FACILITY_001.py
+         DEBT_REFI_001.py REPOW_DEBT_001.py DSRA_001.py
+    tax/TAX_001.py TAX_DE_001.py
+    statements/PL_001.py CF_001.py BS_001.py IRR_001.py
+               WORKING_CAPITAL_001.py SOURCES_USES_001.py
+               VALUATION_001.py BREAKEVEN_001.py
+    checks/MODEL_CHECKS_001.py
+    reporting/DASHBOARD_001.py
   registry/
-    module_registry.json         Master index of all modules
-    assumption_db/DK.json        Denmark market assumptions
-    assumption_db/DE.json        Germany
-    assumption_db/AU.json        Australia
-  tests/                         516 pytest tests
-  contributions/staged/          Draft modules awaiting Martin's review
-  docs/MODULE_GUIDE.md           Module design patterns
-  docs/ASSEMBLY_GUIDE.md         Assembly layer usage
-  docs/CHANGELOG.md
-  requirements.txt               openpyxl, pydantic, pandas, pytest, fastapi
+    module_registry.json          Single source of truth for modules
+    assumption_db/DK.json DE.json AU.json
+  tests/
+  scripts/smoke_test_format.py    Full-model smoke test for Excel output
+  docs/
+    CLAUDE_MODULES.md             Full module inventory + engine wiring
+    CLAUDE_SCHEMAS.md             Full schemas + Excel formatting specs
+  contributions/TEMPLATE.md
 ```
 
----
+## Excel output architecture (format-layer)
 
-## Commands
+### 7-sheet workbook
+| Sheet | Contents |
+|---|---|
+| Cover | Project banner, view selector (Bank/IC/Audit), KPI block, color key |
+| Revenue | REV_001, REV_002, REV_003, PPA_CFD_001, PRICE_CURVES_001 |
+| Costs | OPEX_001–003, CAPEX_001, BESS_REPOW_001, DECOM_PROVISION_001, IMBALANCE_FEE_001 |
+| Debt | DEBT_*, SHL_001, VAT_FACILITY_001, DSRA_001, MRA_001, TAX_*, WACC_001 scalars |
+| FS_Monthly | PL_001, CF_001, BS_001, IRR_001, WORKING_CAPITAL_001, SOURCES_USES_001, etc. |
+| FS_Annual | Same as FS_Monthly — annual aggregation (flows=SUM, stocks=closing) |
+| Summary | Project metadata + scalar KPIs (IRR, NPV, DSCR, WACC) |
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run all tests (always do this before committing)
-python -m pytest tests/ -q
-
-# Run specific module tests
-python -m pytest tests/test_revenue/test_REV_001.py -v
-python -m pytest tests/test_debt/test_DEBT_001.py -v
-
-# Run integration tests
-python -m pytest tests/test_integration/ -v
-
-# Start API locally
-pip install uvicorn
-uvicorn api.main:app --reload
-# Then open http://localhost:8000/docs
+### Column layout (EE Standard — matches PwC/EY reference models)
+```
+A-D (1-4)   narrow indent spacers (width 1.3)
+E   (5)     row description / label (width 40.5)        COL_LABEL
+F   (6)     constant / assumption value (width 12.5)     COL_CONSTANT
+G   (7)     unit (width 14.5)                            COL_UNIT
+H   (8)     notes (hidden, outline level 1)              COL_NOTES
+I   (9)     source (hidden, outline level 1)             COL_SOURCE
+J   (10)    total / lifetime average (width 15.5)        COL_TOTAL
+K   (11)    spacer (width 2.5)                           COL_SPACER
+L+  (12+)   monthly time series, period 0 = col L        COL_PERIOD_0
 ```
 
----
+### Row layout
+```
+Row 1:   sheet name (bold)
+Row 2:   period end dates (monthly: DD-MMM-YY, annual: year integers)
+Row 3:   phase labels ("Construction" / "Operations")
+Row 4:   calendar year integers
+Row 5:   column headers (Description, Constant, Unit, Total/avg., period counters)
+Row 6:   blank spacer
+Row 7+:  data rows per ROW_MAP in cell_mapper.py
+```
 
-## Module pattern — FOLLOW THIS EXACTLY
+Freeze pane: `L7` on all calculation sheets (locks header rows + label columns).
 
-Every module is a single `.py` file. Every module MUST have these four things:
+### Format standard (excel_formatter.py)
+- **Section headers**: teal `28837D` fill, white bold — in SECTION_HEADER_ROWS gaps
+- **Sub-section labels**: grey `A6A6A6` fill, white bold — in SUBSECTION_LABELS gaps
+- **Col headers (row 5)**: slate `44546A`, white bold
+- **Export rows** (net_revenue, cfo, etc.): red font `FF0000`
+- **Import rows** (gross_revenue, depreciation, etc.): blue font `0000FF`
+- **Subtotals** (ebitda, ebit, etc.): thin top+bottom border
+- **Totals** (net_income, closing_cash): medium top border, bold
+- **Col J**: light grey `F2F2F2` fill on all data rows
+- **Row grouping**: detail rows `outline_level=1`, hidden by default (min 4 rows per section)
+- **Row heights**: banner=22pt, col_header=20pt, section=18pt, data=15pt, spacer=5pt
+- **Print**: landscape A3, fit to 1 page wide, repeat rows 1:6 + cols A:K
+- **Tab colors**: Cover=teal, calc=dark teal, FS=slate, Summary=navy
+- **Number formats owned by formatter**: DKKk=`#,##0`, PCT=`0.0%`, RATIO=`0.00x`
 
-### 1. Docstring header
+### Cover sheet (cover_writer.py)
+- View selector `F5`: 1=Bank, 2=IC (default), 3=Audit
+- KPI values use `IF($F$5=...)` formulas referencing Summary sheet
+- FX rate input cell `J2` (default 7.46)
+- Color coding key legend rows 30-34
+
+### Key assembly files
+| File | Role |
+|---|---|
+| `cell_mapper.py` | Column constants, ROW_MAP, MODULE_SHEET, FIELD_LABELS, SUBSECTION_LABELS |
+| `excel_writer.py` | Creates 7 sheets, writes data, calls formatter + cover writer |
+| `excel_formatter.py` | All visual formatting (colors, borders, grouping, heights, print, tabs) |
+| `cover_writer.py` | Cover sheet with perspective KPI block |
+
+## Module pattern
+
+Every module: single `.py` file with docstring header, `Inputs(BaseModel)`, `Outputs(BaseModel)`, `calculate()`, `get_excel_formulas()`.
 
 ```python
 """
@@ -92,236 +156,76 @@ VERSION:      1.0
 TIER:         detailed | both
 MARKETS:      ["DK", "DE", ...]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
-
-One-line description.
 """
-```
-
-### 2. Pydantic Inputs class
-
-```python
 class Inputs(BaseModel):
     periods: int = Field(..., gt=0)
     start_year: int
     start_month: int = Field(..., ge=1, le=12)
-    # ... module-specific fields ...
-
     @model_validator(mode="after")
-    def _validate(self):
-        n = self.periods
-        # Validate all time-series arrays have length == periods
-        for name, arr in [("field_name", self.field_name)]:
-            if len(arr) != n:
-                raise ValueError(f"{name} length {len(arr)} != periods {n}")
-        return self
+    def _validate(self): ...  # array length checks, return self
+
+class Outputs(BaseModel): ...
+
+def calculate(inputs: Inputs) -> Outputs: ...
+def get_excel_formulas(refs: dict) -> dict: ...
 ```
 
-### 3. Pydantic Outputs class
+## Common patterns
 
-```python
-class Outputs(BaseModel):
-    # Time-series: list[float] with length == periods
-    # Scalars: float
-    # Annual aggregation: list[float] with length == number of calendar years
-```
+**Inflation:** `factor = start_factor * (1 + rate) ** max(0, year - start_year)`
 
-### 4. Functions
+**Year groups:** `_year_groups(periods, start_year, start_month) -> OrderedDict`
 
-```python
-def calculate(inputs: Inputs) -> Outputs:
-    """Core computation — pure Python, no side effects, no external deps."""
-    ...
+**Error handling:** Reject financially nonsensical inputs in `@model_validator` with clear `ValueError`. Add `warnings: list[str]` to Outputs for edge cases that aren't errors.
 
-def get_excel_formulas(refs: dict) -> dict:
-    """Return Excel formula strings for key output rows."""
-    ...
-```
+## How to add a new module
 
----
-
-## STRICT RULES — do not violate these
-
-1. **Pure Python only** in modules. No numpy, no pandas, no scipy, no external solvers. Use `math` from stdlib if needed.
-2. **All time-series outputs must have length == `inputs.periods`**. Period 0 is the first month of the project.
-3. **Pydantic v2 conventions**: `Field(...)` for required, `Field(default, description="...")` for optional. Use `@model_validator(mode="after")` for array length checks. Always `return self` at end of validator.
-4. **Inflation/indexation pattern** (used everywhere):
-   ```python
-   factor(year) = start_factor * (1 + inflation_rate) ** max(0, year - inflation_start_year)
-   ```
-5. **Year grouping pattern** (used everywhere):
-   ```python
-   def _year_groups(periods, start_year, start_month) -> OrderedDict:
-       groups = OrderedDict()
-       for p in range(periods):
-           offset = start_month - 1 + p
-           year = start_year + offset // 12
-           groups.setdefault(year, []).append(p)
-       return groups
-   ```
-6. **Sequential module numbering**: REV_004 = new PV revenue module. NOT REV_001 v2. Different numbers = different technologies or approaches.
-7. **Currency unit**: DKKk (thousands of DKK) throughout, except where noted (DKK/MWh for prices).
-8. **Never break existing tests.** Run `python -m pytest tests/ -q` before any commit. All 516 tests must pass.
-9. **Never modify existing module Outputs in a breaking way.** Add new fields, don't rename or remove existing ones. Other modules and the assembly engine depend on them.
-10. **engine.py execution order matters.** Steps 1–9 are user-supplied inputs. Steps 10–14 are auto-wired. If you add a new module, decide where it fits in the chain.
-
----
-
-## Engine execution order (dependency chain)
-
-```
-Step 1:  WACC_001    no dependencies (scalar outputs)
-Step 2:  REV_001     PV revenue
-Step 3:  REV_002     BESS revenue
-Step 4:  REV_003     Wind revenue
-Step 5:  OPEX_001    PV OPEX
-Step 6:  OPEX_002    BESS OPEX
-Step 7:  OPEX_003    Wind OPEX
-Step 8:  CAPEX_001   capital expenditure
-Step 9:  DEBT_001    debt schedule
-Step 10: TAX_001     WIRED from: rev.net_revenue, opex.total_opex, debt.interest, capex
-Step 11: PL_001      WIRED from: rev, opex, tax, debt
-Step 12: CF_001      WIRED from: PL, capex, debt
-Step 13: BS_001      WIRED from: capex, CF, debt, PL
-Step 14: IRR_001     WIRED from: CF (pfcf = CFO+CFI, ecf = net_cash_flow), WACC rates
-```
-
----
-
-## How to add a new module (checklist)
-
-When I ask you to create a new module, follow these steps in order:
-
-1. **Create the module file** at `modules/<category>/XXX_NNN.py`
-   - Follow the exact pattern from an existing module in the same category
-   - Include docstring header, Inputs, Outputs, calculate(), get_excel_formulas()
-   - Copy the `_year_groups()` and `_indexation_factor()` helpers if needed
-
-2. **Create the test file** at `tests/test_<category>/test_XXX_NNN.py`
-   - Test validation (wrong array lengths, invalid values)
-   - Test output structure (returns Outputs, correct array lengths)
-   - Test core calculations (known-value checks)
-   - Test edge cases (zeros, large values, boundary conditions)
-   - Minimum 15 tests per module
-
-3. **Add registry entry** to `registry/module_registry.json`:
-   ```json
-   "XXX_NNN": {
-     "module_id": "XXX_NNN",
-     "version": "1.0",
-     "tier": "detailed",
-     "markets": ["DK", ...],
-     "technologies": ["PV", ...],
-     "path": "modules/<category>/XXX_NNN.py"
-   }
-   ```
-
-4. **Add row mappings** to `assembly/cell_mapper.py`:
-   - Add entries to `ROW_MAP` for each time-series output
-   - Add entries to `FIELD_LABELS` for display names
-   - Add entries to `FIELD_UNITS` if non-default units
-   - Add to `MODULE_SHEET` to assign a worksheet
-
-5. **Wire into engine.py**:
-   - Import the module at top of file
-   - Add `Optional[XXX_NNN.Inputs]` field to `ProjectConfig`
-   - Add execution step in `run()` at the correct position in the dependency chain
-   - If downstream modules need its outputs, wire them (e.g. tax needs debt.interest)
-
-6. **Run all tests**: `python -m pytest tests/ -q` — every single test must pass
-
----
+1. Create `modules/<category>/XXX_NNN.py` (follow existing module in same category)
+2. Create `tests/test_<category>/test_XXX_NNN.py`
+3. Add registry entry to `registry/module_registry.json`
+4. Add row mappings to `assembly/cell_mapper.py` (ROW_MAP, FIELD_LABELS, MODULE_SHEET)
+5. Wire into `assembly/engine.py` (import, add to ProjectConfig, add step in `run()`)
+6. `python -m pytest tests/ -q` — all tests must pass
 
 ## How to extend an existing module
 
-When I ask you to extend a module (add fields, add logic):
-
-1. **Add new fields to Inputs** — always with defaults so existing configs don't break
-2. **Add new fields to Outputs** — append only, never rename/remove
-3. **Update calculate()** — add the new logic
-4. **Update get_excel_formulas()** — add formula strings for new rows
-5. **Add new tests** for the new functionality
-6. **Update cell_mapper.py** — add ROW_MAP entries for new output fields
-7. **Run all tests** — existing tests must still pass, new tests must pass too
-
----
+1. Add new Inputs fields with defaults (existing configs don't break)
+2. Add new Outputs fields (append only)
+3. Update `calculate()` and `get_excel_formulas()`
+4. Add tests, update `cell_mapper.py`, run all tests
 
 ## Common file references
 
-| I want to... | Edit... |
+| Task | File |
 |---|---|
-| Add/change a module's logic | `modules/<category>/XXX_NNN.py` |
-| Change how modules are wired | `assembly/engine.py` — the `run()` function |
-| Change Excel row layout | `assembly/cell_mapper.py` — `ROW_MAP`, `FIELD_LABELS` |
-| Add a market assumption DB | `registry/assumption_db/XX.json` |
-| Add a module to the registry | `registry/module_registry.json` |
-| Add/change API endpoints | `api/main.py` |
+| Module logic | `modules/<category>/XXX_NNN.py` |
+| Module wiring | `assembly/engine.py` — `run()` |
+| Excel row/col layout | `assembly/cell_mapper.py` |
+| Excel data writing | `assembly/excel_writer.py` |
+| Excel visual formatting | `assembly/excel_formatter.py` |
+| Cover sheet | `assembly/cover_writer.py` |
+| Market assumptions | `registry/assumption_db/XX.json` |
+| Module registry | `registry/module_registry.json` |
+| Scenario analysis | `assembly/scenario_runner.py`, `assembly/scenario_engine.py` |
 
----
+## Progressive disclosure — read when needed
 
-## Development backlog (prioritised)
+- `cat docs/CLAUDE_MODULES.md` — module inventory, engine execution order, wiring mechanism, auto-wiring, debt ordering
+- `cat docs/CLAUDE_SCHEMAS.md` — ProjectConfig fields, v2.0 target schemas, Excel formatting spec, cell mapper, assumption DB templates
 
-These are known gaps from comparing the library against the EE vendor model (Holsted Hybrid, DK, PV+BESS). Work on these when I ask.
+## Style
 
-### High priority
-- **DEBT_001 → add sculpted repayment**: Add `repayment_type="sculpted"` with per-revenue-stream DSCR weights (PV contracted 1.2×, PV merchant 1.5×, BESS contracted 1.2×, BESS merchant 1.8×). Also add debt auto-sizing (min of DSCR-sized and leverage-capped).
-- **CAPEX_001 → add BESS repowering**: Mid-life battery stack replacement. New inputs: `repowering_cost_DKKk`, `repowering_period` (0-based), `repowering_drawdown_months`. Output: second capex event at the repowering period.
+- No comments on obvious code. Comments for non-obvious business logic only.
+- Domain names: `n` for periods, `yg` for year_groups, `ir` for inflation_rate.
+- `_helper()` with underscore for internal helpers. Type hints on signatures, not on locals.
+- Test names: `test_<section>_<what>`.
 
-### Medium priority
-- **New module: SHL_001** — Shareholder loan. Inputs: `shl_pct_of_equity`, `margin`, `accrued` (bool). Outputs: monthly opening/closing balance, interest (accrued or cash), repayment. Wire into CF_001 and BS_001.
-- **New module: VAT_FACILITY_001** — Construction VAT financing. Inputs: VAT rate, reimbursement delay months, margin, commitment fee. Outputs: monthly VAT paid, VAT refund, facility balance, interest.
-- **TAX_001 → expand to 7 buckets**: Currently 4 depreciation buckets. Extend to 7 (hard PV, hard BESS, grid, development, land, advisors, repowering) with per-bucket rates and lifetimes.
-- **New module: REPOWERING_FACILITY_001** — Separate debt instrument for BESS repowering. Same structure as DEBT_001 but triggered at repowering date with 100% LTV of repowering cost.
+## Git
 
-### Low priority
-- **REV_002 → add tolling agreement slot**: Contracted MW × price/MW/year, with inflation and tenor. Toggle on/off.
-- **REV_002 → add external curve pass-through**: Accept pre-computed BESS revenue from technical model (Aurora/in-house) as direct input, bypassing internal calculation.
-- **Assembly → multi-scenario engine**: Run ProjectConfig N times with parameter sweeps. Output comparison table.
+- `main` branch, Martin reviews directly.
+- Commit: `module_id: description` e.g. `DEBT_001: add margin schedule`.
+- Never force-push. Full tests before every commit.
 
----
+## When compacting
 
-## Debugging tips
-
-After `result = run(config)`:
-
-```python
-# Inspect module output
-rev = result.outputs["REV_001"]
-print(rev.net_revenue[:12])        # first 12 months
-
-# BS imbalance check (should be ~0)
-bs = result.outputs["BS_001"]
-max_imbalance = max(abs(v) for v in bs.imbalance)
-
-# DSCR covenant check
-debt = result.outputs["DEBT_001"]
-print(f"Min DSCR: {debt.min_dscr:.2f}x, Breached: {debt.covenant_breached}")
-
-# IRR
-irr = result.outputs["IRR_001"]
-print(f"Project IRR: {irr.project_irr:.2%}, Equity IRR: {irr.equity_irr:.2%}")
-```
-
-Common errors:
-- `ValueError: drawdowns sum != facility` — drawdown schedule doesn't match facility amount
-- `ValueError: xxx length N != periods M` — time-series array length mismatch
-- `ppa_slots must have exactly 5 entries` — REV_001/REV_003 always expect 5 PPA slots
-
----
-
-## Style conventions
-
-- No comments on obvious code. Comments only for non-obvious business logic.
-- Concise variable names matching the domain: `n` for periods, `yg` for year_groups, `ir` for inflation_rate.
-- `_helper_functions()` with leading underscore for module-internal helpers.
-- Type hints on function signatures. Not needed on local variables.
-- Module docstrings reference the EE_MODEL_BUILD_SPEC section number.
-- Test function names: `test_<section>_<what_it_checks>` e.g. `test_e_goo_volume_no_ppa`.
-
----
-
-## Git workflow
-
-- Work on `main` branch (Martin reviews directly)
-- Commit messages: `module_id: short description` e.g. `DEBT_001: add sculpted repayment type`
-- Never force-push
-- Run full test suite before every commit
+Always preserve: list of modified files, test commands, current module being worked on, and the v1.x/v2.0 transition state.
