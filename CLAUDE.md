@@ -36,6 +36,7 @@ uvicorn api.main:app --reload                          # API at localhost:8000/d
 7. **Sequential module numbering**: REV_004 = new module, NOT REV_001 v2.
 8. **Timeline injection**: engine overrides `periods/start_year/start_month` from `TimelineConfig`.
 9. **Fix at source.** Never patch Excel output — fix the upstream module.
+10. **Date stamps are mandatory.** Every module docstring must have `CREATED:` and `MODIFIED:` lines. Every registry entry must have `"created"` and `"modified"` fields. When bumping VERSION, always update MODIFIED to today's date (YYYY-MM-DD). Format: ISO 8601 date only, no time.
 
 ## Project structure
 
@@ -156,6 +157,8 @@ VERSION:      1.0
 TIER:         detailed | both
 MARKETS:      ["DK", "DE", ...]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
+CREATED:      YYYY-MM-DD
+MODIFIED:     YYYY-MM-DD
 """
 class Inputs(BaseModel):
     periods: int = Field(..., gt=0)
@@ -180,9 +183,9 @@ def get_excel_formulas(refs: dict) -> dict: ...
 
 ## How to add a new module
 
-1. Create `modules/<category>/XXX_NNN.py` (follow existing module in same category)
+1. Create `modules/<category>/XXX_NNN.py` (follow existing module in same category). Set `CREATED:` and `MODIFIED:` to today's date.
 2. Create `tests/test_<category>/test_XXX_NNN.py`
-3. Add registry entry to `registry/module_registry.json`
+3. Add registry entry to `registry/module_registry.json` with `"created"` and `"modified"` set to today's date.
 4. Add row mappings to `assembly/cell_mapper.py` (ROW_MAP, FIELD_LABELS, MODULE_SHEET)
 5. Wire into `assembly/engine.py` (import, add to ProjectConfig, add step in `run()`)
 6. `python -m pytest tests/ -q` — all tests must pass
@@ -225,6 +228,8 @@ def get_excel_formulas(refs: dict) -> dict: ...
 - `main` branch, Martin reviews directly.
 - Commit: `module_id: description` e.g. `DEBT_001: add margin schedule`.
 - Never force-push. Full tests before every commit.
+- When modifying a module: update `MODIFIED:` in the docstring and `"modified"` in module_registry.json to today's date.
+- When bumping VERSION: update MODIFIED date in both places.
 
 ## When compacting
 

@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         simplified / detailed
 MARKETS:      ["DK", "DE", "AU", "SE", "PL", "*"]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
+CREATED:      2026-03-14
+MODIFIED:     2026-03-17
 
 Two-layer WACC calculation.
 PPA layer: contracted revenue, reduced market risk.

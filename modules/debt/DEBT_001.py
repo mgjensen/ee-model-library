@@ -4,6 +4,8 @@ VERSION:      1.1
 TIER:         detailed
 MARKETS:      ["DK", "DE", "AU", "SE", "PL", "*"]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-18
 
 Senior debt schedule for project finance.
 

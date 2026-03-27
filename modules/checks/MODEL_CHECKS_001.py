@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         both
 MARKETS:      ["*"]
 TECHNOLOGIES: ["*"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-17
 
 Automated model integrity and commercial checks.
 

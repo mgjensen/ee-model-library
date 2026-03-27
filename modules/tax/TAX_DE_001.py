@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["DE"]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-17
 
 German dual-layer corporate tax.
 

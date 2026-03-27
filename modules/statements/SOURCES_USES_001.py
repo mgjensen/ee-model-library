@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["*"]
 TECHNOLOGIES: ["*"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-17
 
 Construction-period sources & uses waterfall.
 Determines equity requirement as residual after all debt sources.

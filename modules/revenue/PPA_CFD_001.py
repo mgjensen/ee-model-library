@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["*"]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-17
 
 Baseload PPA / Contract for Difference as financial instrument.
 Settlement = (strike - wholesale) x volume x hours.  Can be positive or negative.

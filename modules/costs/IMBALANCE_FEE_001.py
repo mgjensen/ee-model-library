@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["LT", "*"]
 TECHNOLOGIES: ["PV", "WIND", "*"]
+CREATED:      2026-03-18
+MODIFIED:     2026-03-18
 
 Polluter pays imbalance fee.
 

@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["*"]
 TECHNOLOGIES: ["BESS", "WIND", "*"]
+CREATED:      2026-03-18
+MODIFIED:     2026-03-18
 
 Decommissioning provision (balance sheet liability) + disposal sinking fund (cash).
 

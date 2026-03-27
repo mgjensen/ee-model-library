@@ -15,6 +15,8 @@ VERSION:      1.0
 TIER:         detailed | both
 MARKETS:      ["DK", "DE", ...]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
+CREATED:      YYYY-MM-DD
+MODIFIED:     YYYY-MM-DD
 
 Short description.
 """

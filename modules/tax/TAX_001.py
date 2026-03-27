@@ -4,6 +4,8 @@ VERSION:      1.1
 TIER:         detailed
 MARKETS:      ["DK"]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-17
 
 Danish corporate tax calculation for renewable energy projects.
 

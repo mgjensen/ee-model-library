@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["*"]
 TECHNOLOGIES: ["*"]
+CREATED:      2026-03-18
+MODIFIED:     2026-03-18
 
 EV Bridge / Purchase Price Calculation.
 

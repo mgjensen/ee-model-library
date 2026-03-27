@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["DK", "DE", "AU", "SE", "*"]
 TECHNOLOGIES: ["PV"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-18
 
 PV OPEX calculation — 11 sub-components per EE_MODEL_BUILD_SPEC.md §6.1.
 

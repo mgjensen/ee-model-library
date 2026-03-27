@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["DK", "DE", "SE", "PL", "*"]
 TECHNOLOGIES: ["WIND"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-17
 
 Wind revenue calculation — sub-sections A through H per EE_MODEL_BUILD_SPEC.md §5.3.
 Every line item is a named output field; no opaque totals.

@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["DK", "DE", "AU", "SE", "PL", "*"]
 TECHNOLOGIES: ["BESS", "*"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-17
 
 BESS battery stack repowering (replacement).
 

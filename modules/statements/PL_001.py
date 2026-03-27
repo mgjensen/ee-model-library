@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["DK", "DE", "AU", "SE", "PL", "*"]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-17
 
 Profit & Loss statement — monthly accrual basis per EE_MODEL_BUILD_SPEC.md §8.
 

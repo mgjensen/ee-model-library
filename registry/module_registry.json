@@ -1,315 +1,699 @@
 {
-  "WACC_001": {
-    "module_id": "WACC_001",
-    "version": "1.0",
-    "tier": "both",
-    "markets": ["DK", "DE", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/core/WACC_001.py"
-  },
-  "TAX_001": {
-    "module_id": "TAX_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/tax/TAX_001.py"
-  },
-  "DEBT_001": {
-    "module_id": "DEBT_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/debt/DEBT_001.py"
-  },
-  "CAPEX_001": {
-    "module_id": "CAPEX_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/capex/CAPEX_001.py"
-  },
-  "OPEX_001": {
-    "module_id": "OPEX_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "*"],
-    "technologies": ["PV"],
-    "path": "modules/costs/OPEX_001.py"
-  },
-  "OPEX_002": {
-    "module_id": "OPEX_002",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "*"],
-    "technologies": ["BESS"],
-    "path": "modules/costs/OPEX_002.py"
-  },
-  "OPEX_003": {
-    "module_id": "OPEX_003",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "SE", "PL", "*"],
-    "technologies": ["WIND"],
-    "path": "modules/costs/OPEX_003.py"
-  },
-  "REV_001": {
-    "module_id": "REV_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "*"],
-    "technologies": ["PV"],
-    "path": "modules/revenue/REV_001.py"
-  },
-  "REV_002": {
-    "module_id": "REV_002",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "*"],
-    "technologies": ["BESS"],
-    "path": "modules/revenue/REV_002.py"
-  },
-  "REV_003": {
-    "module_id": "REV_003",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "SE", "PL", "*"],
-    "technologies": ["WIND"],
-    "path": "modules/revenue/REV_003.py"
-  },
-  "PL_001": {
-    "module_id": "PL_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/statements/PL_001.py"
-  },
-  "CF_001": {
-    "module_id": "CF_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/statements/CF_001.py"
-  },
-  "BS_001": {
-    "module_id": "BS_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/statements/BS_001.py"
-  },
-  "IRR_001": {
-    "module_id": "IRR_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/statements/IRR_001.py"
-  },
-  "DEBT_SCULPT_001": {
-    "module_id": "DEBT_SCULPT_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/debt/DEBT_SCULPT_001.py"
-  },
-  "VAT_FACILITY_001": {
-    "module_id": "VAT_FACILITY_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/debt/VAT_FACILITY_001.py"
-  },
-  "SHL_001": {
-    "module_id": "SHL_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/debt/SHL_001.py"
-  },
-  "DSRA_001": {
-    "module_id": "DSRA_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/debt/DSRA_001.py"
-  },
-  "BESS_REPOW_001": {
-    "module_id": "BESS_REPOW_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["BESS", "*"],
-    "path": "modules/capex/BESS_REPOW_001.py"
-  },
-  "DEBT_REFI_001": {
-    "module_id": "DEBT_REFI_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/debt/DEBT_REFI_001.py"
-  },
-  "DEBT_LINEAR_001": {
-    "module_id": "DEBT_LINEAR_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/debt/DEBT_LINEAR_001.py"
-  },
-  "CONSTR_FINANCE_001": {
-    "module_id": "CONSTR_FINANCE_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DK", "DE", "AU", "SE", "PL", "*"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/debt/CONSTR_FINANCE_001.py"
-  },
-  "TAX_DE_001": {
-    "module_id": "TAX_DE_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["DE"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/tax/TAX_DE_001.py"
-  },
-  "PRICE_CURVES_001": {
-    "module_id": "PRICE_CURVES_001",
-    "version": "1.0",
-    "tier": "both",
-    "markets": ["*"],
-    "technologies": ["*"],
-    "path": "modules/market/PRICE_CURVES_001.py"
-  },
-  "WORKING_CAPITAL_001": {
-    "module_id": "WORKING_CAPITAL_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["*"],
-    "technologies": ["*"],
-    "path": "modules/statements/WORKING_CAPITAL_001.py"
-  },
-  "PPA_CFD_001": {
-    "module_id": "PPA_CFD_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["*"],
-    "technologies": ["*"],
-    "path": "modules/revenue/PPA_CFD_001.py"
-  },
-  "SOURCES_USES_001": {
-    "module_id": "SOURCES_USES_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["*"],
-    "technologies": ["*"],
-    "path": "modules/statements/SOURCES_USES_001.py"
-  },
-  "MODEL_CHECKS_001": {
-    "module_id": "MODEL_CHECKS_001",
-    "version": "1.0",
-    "tier": "both",
-    "markets": ["*"],
-    "technologies": ["*"],
-    "path": "modules/checks/MODEL_CHECKS_001.py"
-  },
-  "DASHBOARD_001": {
-    "module_id": "DASHBOARD_001",
-    "version": "1.0",
-    "tier": "both",
-    "markets": ["*"],
-    "technologies": ["*"],
-    "path": "modules/reporting/DASHBOARD_001.py"
-  },
-  "REPOW_DEBT_001": {
-    "module_id": "REPOW_DEBT_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["*"],
-    "technologies": ["BESS", "*"],
-    "path": "modules/debt/REPOW_DEBT_001.py"
-  },
-  "VALUATION_001": {
-    "module_id": "VALUATION_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["*"],
-    "technologies": ["*"],
-    "path": "modules/statements/VALUATION_001.py"
-  },
-  "BREAKEVEN_001": {
-    "module_id": "BREAKEVEN_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["*"],
-    "technologies": ["*"],
-    "path": "modules/statements/BREAKEVEN_001.py"
-  },
-  "PERSPECTIVES_001": {
-    "module_id": "PERSPECTIVES_001",
-    "version": "1.0",
-    "tier": "both",
-    "markets": ["*"],
-    "technologies": ["*"],
-    "path": "assembly/perspectives.py",
-    "type": "utility"
-  },
-  "CASH_SWEEP_001": {
-    "module_id": "CASH_SWEEP_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["*"],
-    "technologies": ["*"],
-    "path": "modules/debt/CASH_SWEEP_001.py"
-  },
-  "TAX_LT_001": {
-    "module_id": "TAX_LT_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["LT"],
-    "technologies": ["PV", "BESS", "WIND", "*"],
-    "path": "modules/tax/TAX_LT_001.py"
-  },
-  "BRIDGE_FACILITY_001": {
-    "module_id": "BRIDGE_FACILITY_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["*"],
-    "technologies": ["*"],
-    "path": "modules/debt/BRIDGE_FACILITY_001.py"
-  },
-  "MRA_001": {
-    "module_id": "MRA_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["*"],
-    "technologies": ["*"],
-    "path": "modules/debt/MRA_001.py"
-  },
-  "DECOM_PROVISION_001": {
-    "module_id": "DECOM_PROVISION_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["*"],
-    "technologies": ["BESS", "WIND", "*"],
-    "path": "modules/costs/DECOM_PROVISION_001.py"
-  },
-  "IMBALANCE_FEE_001": {
-    "module_id": "IMBALANCE_FEE_001",
-    "version": "1.0",
-    "tier": "detailed",
-    "markets": ["LT", "*"],
-    "technologies": ["PV", "WIND", "*"],
-    "path": "modules/costs/IMBALANCE_FEE_001.py"
-  }
+    "WACC_001": {
+        "module_id": "WACC_001",
+        "version": "1.0",
+        "tier": "both",
+        "markets": [
+            "DK",
+            "DE",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/core/WACC_001.py",
+        "created": "2026-03-14",
+        "modified": "2026-03-17"
+    },
+    "TAX_001": {
+        "module_id": "TAX_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/tax/TAX_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "DEBT_001": {
+        "module_id": "DEBT_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/debt/DEBT_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-18"
+    },
+    "CAPEX_001": {
+        "module_id": "CAPEX_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/capex/CAPEX_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "OPEX_001": {
+        "module_id": "OPEX_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "*"
+        ],
+        "technologies": [
+            "PV"
+        ],
+        "path": "modules/costs/OPEX_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-18"
+    },
+    "OPEX_002": {
+        "module_id": "OPEX_002",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "*"
+        ],
+        "technologies": [
+            "BESS"
+        ],
+        "path": "modules/costs/OPEX_002.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "OPEX_003": {
+        "module_id": "OPEX_003",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "WIND"
+        ],
+        "path": "modules/costs/OPEX_003.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "REV_001": {
+        "module_id": "REV_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "*"
+        ],
+        "technologies": [
+            "PV"
+        ],
+        "path": "modules/revenue/REV_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-18"
+    },
+    "REV_002": {
+        "module_id": "REV_002",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "*"
+        ],
+        "technologies": [
+            "BESS"
+        ],
+        "path": "modules/revenue/REV_002.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-18"
+    },
+    "REV_003": {
+        "module_id": "REV_003",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "WIND"
+        ],
+        "path": "modules/revenue/REV_003.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "PL_001": {
+        "module_id": "PL_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/statements/PL_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "CF_001": {
+        "module_id": "CF_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/statements/CF_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "BS_001": {
+        "module_id": "BS_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/statements/BS_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "IRR_001": {
+        "module_id": "IRR_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/statements/IRR_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "DEBT_SCULPT_001": {
+        "module_id": "DEBT_SCULPT_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/debt/DEBT_SCULPT_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-18"
+    },
+    "VAT_FACILITY_001": {
+        "module_id": "VAT_FACILITY_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/debt/VAT_FACILITY_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "SHL_001": {
+        "module_id": "SHL_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/debt/SHL_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-18"
+    },
+    "DSRA_001": {
+        "module_id": "DSRA_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/debt/DSRA_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "BESS_REPOW_001": {
+        "module_id": "BESS_REPOW_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "BESS",
+            "*"
+        ],
+        "path": "modules/capex/BESS_REPOW_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "DEBT_REFI_001": {
+        "module_id": "DEBT_REFI_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/debt/DEBT_REFI_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "DEBT_LINEAR_001": {
+        "module_id": "DEBT_LINEAR_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/debt/DEBT_LINEAR_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "CONSTR_FINANCE_001": {
+        "module_id": "CONSTR_FINANCE_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DK",
+            "DE",
+            "AU",
+            "SE",
+            "PL",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/debt/CONSTR_FINANCE_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "TAX_DE_001": {
+        "module_id": "TAX_DE_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "DE"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/tax/TAX_DE_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "PRICE_CURVES_001": {
+        "module_id": "PRICE_CURVES_001",
+        "version": "1.0",
+        "tier": "both",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "*"
+        ],
+        "path": "modules/market/PRICE_CURVES_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "WORKING_CAPITAL_001": {
+        "module_id": "WORKING_CAPITAL_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "*"
+        ],
+        "path": "modules/statements/WORKING_CAPITAL_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "PPA_CFD_001": {
+        "module_id": "PPA_CFD_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "*"
+        ],
+        "path": "modules/revenue/PPA_CFD_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "SOURCES_USES_001": {
+        "module_id": "SOURCES_USES_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "*"
+        ],
+        "path": "modules/statements/SOURCES_USES_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "MODEL_CHECKS_001": {
+        "module_id": "MODEL_CHECKS_001",
+        "version": "1.0",
+        "tier": "both",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "*"
+        ],
+        "path": "modules/checks/MODEL_CHECKS_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "DASHBOARD_001": {
+        "module_id": "DASHBOARD_001",
+        "version": "1.0",
+        "tier": "both",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "*"
+        ],
+        "path": "modules/reporting/DASHBOARD_001.py",
+        "created": "2026-03-17",
+        "modified": "2026-03-17"
+    },
+    "REPOW_DEBT_001": {
+        "module_id": "REPOW_DEBT_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "BESS",
+            "*"
+        ],
+        "path": "modules/debt/REPOW_DEBT_001.py",
+        "created": "2026-03-18",
+        "modified": "2026-03-18"
+    },
+    "VALUATION_001": {
+        "module_id": "VALUATION_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "*"
+        ],
+        "path": "modules/statements/VALUATION_001.py",
+        "created": "2026-03-18",
+        "modified": "2026-03-18"
+    },
+    "BREAKEVEN_001": {
+        "module_id": "BREAKEVEN_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "*"
+        ],
+        "path": "modules/statements/BREAKEVEN_001.py",
+        "created": "2026-03-18",
+        "modified": "2026-03-18"
+    },
+    "PERSPECTIVES_001": {
+        "module_id": "PERSPECTIVES_001",
+        "version": "1.0",
+        "tier": "both",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "*"
+        ],
+        "path": "assembly/perspectives.py",
+        "type": "utility",
+        "created": "2026-03-18",
+        "modified": "2026-03-18"
+    },
+    "CASH_SWEEP_001": {
+        "module_id": "CASH_SWEEP_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "*"
+        ],
+        "path": "modules/debt/CASH_SWEEP_001.py",
+        "created": "2026-03-18",
+        "modified": "2026-03-18"
+    },
+    "TAX_LT_001": {
+        "module_id": "TAX_LT_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "LT"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/tax/TAX_LT_001.py",
+        "created": "2026-03-18",
+        "modified": "2026-03-18"
+    },
+    "BRIDGE_FACILITY_001": {
+        "module_id": "BRIDGE_FACILITY_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "*"
+        ],
+        "path": "modules/debt/BRIDGE_FACILITY_001.py",
+        "created": "2026-03-18",
+        "modified": "2026-03-18"
+    },
+    "MRA_001": {
+        "module_id": "MRA_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "*"
+        ],
+        "path": "modules/debt/MRA_001.py",
+        "created": "2026-03-18",
+        "modified": "2026-03-18"
+    },
+    "DECOM_PROVISION_001": {
+        "module_id": "DECOM_PROVISION_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "*"
+        ],
+        "technologies": [
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/costs/DECOM_PROVISION_001.py",
+        "created": "2026-03-18",
+        "modified": "2026-03-18"
+    },
+    "IMBALANCE_FEE_001": {
+        "module_id": "IMBALANCE_FEE_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "LT",
+            "*"
+        ],
+        "technologies": [
+            "PV",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/costs/IMBALANCE_FEE_001.py",
+        "created": "2026-03-18",
+        "modified": "2026-03-18"
+    }
 }

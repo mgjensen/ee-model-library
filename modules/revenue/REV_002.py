@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["DK", "DE", "AU", "SE", "*"]
 TECHNOLOGIES: ["BESS"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-18
 
 BESS revenue calculation — sub-sections A through G per EE_MODEL_BUILD_SPEC.md §5.2.
 Every line item is a named output field; no opaque totals.

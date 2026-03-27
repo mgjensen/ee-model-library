@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["LT"]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
+CREATED:      2026-03-18
+MODIFIED:     2026-03-18
 
 Lithuanian corporate tax calculation for renewable energy projects.
 

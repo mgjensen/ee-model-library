@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         both
 MARKETS:      ["*"]
 TECHNOLOGIES: ["*"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-17
 
 Market price curve library.
 Stores named monthly/annual price curves and serves them by name to downstream

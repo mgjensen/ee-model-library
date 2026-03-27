@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["*"]
 TECHNOLOGIES: ["*"]
+CREATED:      2026-03-18
+MODIFIED:     2026-03-18
 
 Short-term bridge loan with bullet repayment + optional construction loan recap.
 

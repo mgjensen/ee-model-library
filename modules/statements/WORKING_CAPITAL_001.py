@@ -4,6 +4,8 @@ VERSION:      1.0
 TIER:         detailed
 MARKETS:      ["*"]
 TECHNOLOGIES: ["*"]
+CREATED:      2026-03-17
+MODIFIED:     2026-03-17
 
 Working capital: receivables and payables by revenue stream with day-count delay.
 
