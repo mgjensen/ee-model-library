@@ -109,12 +109,14 @@ def test_file_is_valid_xlsx(written_wb):
 
 def test_all_sheets_present(written_wb):
     wb, *_ = written_wb
-    assert set(wb.sheetnames) == set(SHEETS)
+    expected = {"Assumptions", "Inputs"} | set(SHEETS)
+    assert set(wb.sheetnames) == expected
 
 
 def test_sheet_order(written_wb):
     wb, *_ = written_wb
-    assert wb.sheetnames == SHEETS
+    expected = ["Assumptions", "Inputs"] + SHEETS
+    assert wb.sheetnames == expected
 
 
 def test_no_old_statements_sheet(written_wb):
@@ -241,10 +243,15 @@ def test_pl_net_income_written(written_wb):
     wb, result, *_ = written_wb
     ws = wb["FS_Monthly"]
     row = get_row("PL_001", "net_income")
-    pl_out = result.outputs["PL_001"]
-    expected = pl_out.net_income[0]
     actual = ws.cell(row=row, column=period_col(0)).value
-    assert actual == pytest.approx(expected, rel=1e-6)
+    # May be a formula string (Layer 1) or a float (Layer 2)
+    assert actual is not None
+    if isinstance(actual, str):
+        assert actual.startswith("="), f"Expected formula, got: {actual!r}"
+    else:
+        pl_out = result.outputs["PL_001"]
+        expected = pl_out.net_income[0]
+        assert actual == pytest.approx(expected, rel=1e-6)
 
 
 def test_irr_cumulative_pfcf_written(written_wb):
