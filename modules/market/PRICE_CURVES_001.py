@@ -56,8 +56,13 @@ class Inputs(BaseModel):
     start_year: int = Field(..., description="Calendar year of period 0")
     start_month: int = Field(..., ge=1, le=12, description="Calendar month (1-12) of period 0")
 
-    # Curve library
+    # Curve library — named curves for lookup
     library: CurveLibrary = Field(default_factory=CurveLibrary)
+
+    # Strict mode: raise ValueError on missing curve names instead of returning zeros
+    strict_lookup: bool = Field(
+        False, description="If True, missing curve names raise ValueError with available names"
+    )
 
     # Selection fields — curve name to look up in library.curves
     capture_price_curve: str = Field("", description="Curve name for capture price")
@@ -184,11 +189,20 @@ def _build_inflation_index(rates: list[float], periods: int, start_year: int, st
 
 def _resolve_curve(name: str, library: CurveLibrary, periods: int,
                    start_year: int, start_month: int,
-                   missing: list[str]) -> list[float]:
-    """Look up a curve by name; return zeros if empty or missing."""
+                   missing: list[str], strict: bool = False) -> list[float]:
+    """Look up a curve by name; return zeros if empty or missing.
+
+    In strict mode, missing names raise ValueError listing available curves.
+    """
     if not name:
         return [0.0] * periods
     if name not in library.curves:
+        if strict:
+            available = sorted(library.curves.keys()) if library.curves else ["(none)"]
+            raise ValueError(
+                f"Curve '{name}' not found in library. "
+                f"Available curves: {', '.join(available)}"
+            )
         missing.append(name)
         return [0.0] * periods
     return _align_curve(library.curves[name], periods, start_year, start_month)
@@ -204,28 +218,29 @@ def calculate(inputs: Inputs) -> Outputs:
     sy, sm = inputs.start_year, inputs.start_month
     lib = inputs.library
     missing: list[str] = []
+    strict = inputs.strict_lookup
 
     # Direct price curves
-    capture_price = _resolve_curve(inputs.capture_price_curve, lib, n, sy, sm, missing)
-    bess_revenue = _resolve_curve(inputs.bess_revenue_curve, lib, n, sy, sm, missing)
-    wholesale = _resolve_curve(inputs.wholesale_curve, lib, n, sy, sm, missing)
-    interest_rate = _resolve_curve(inputs.interest_rate_curve, lib, n, sy, sm, missing)
-    goo_price = _resolve_curve(inputs.goo_curve, lib, n, sy, sm, missing)
-    curtailment = _resolve_curve(inputs.curtailment_curve, lib, n, sy, sm, missing)
-    imbalance_cost = _resolve_curve(inputs.imbalance_curve, lib, n, sy, sm, missing)
-    bess_opex = _resolve_curve(inputs.bess_opex_curve, lib, n, sy, sm, missing)
+    capture_price = _resolve_curve(inputs.capture_price_curve, lib, n, sy, sm, missing, strict)
+    bess_revenue = _resolve_curve(inputs.bess_revenue_curve, lib, n, sy, sm, missing, strict)
+    wholesale = _resolve_curve(inputs.wholesale_curve, lib, n, sy, sm, missing, strict)
+    interest_rate = _resolve_curve(inputs.interest_rate_curve, lib, n, sy, sm, missing, strict)
+    goo_price = _resolve_curve(inputs.goo_curve, lib, n, sy, sm, missing, strict)
+    curtailment = _resolve_curve(inputs.curtailment_curve, lib, n, sy, sm, missing, strict)
+    imbalance_cost = _resolve_curve(inputs.imbalance_curve, lib, n, sy, sm, missing, strict)
+    bess_opex = _resolve_curve(inputs.bess_opex_curve, lib, n, sy, sm, missing, strict)
 
     # Debt-case curves
-    capture_debt = _resolve_curve(inputs.capture_price_curve_debt, lib, n, sy, sm, missing)
-    bess_debt = _resolve_curve(inputs.bess_revenue_curve_debt, lib, n, sy, sm, missing)
+    capture_debt = _resolve_curve(inputs.capture_price_curve_debt, lib, n, sy, sm, missing, strict)
+    bess_debt = _resolve_curve(inputs.bess_revenue_curve_debt, lib, n, sy, sm, missing, strict)
 
     # Inflation rate curves (resolve monthly rates, then build indices)
-    infl_power_rates = _resolve_curve(inputs.inflation_power_curve, lib, n, sy, sm, missing)
-    infl_ppa_rates = _resolve_curve(inputs.inflation_ppa_curve, lib, n, sy, sm, missing)
-    infl_goo_rates = _resolve_curve(inputs.inflation_goo_curve, lib, n, sy, sm, missing)
-    infl_om_rates = _resolve_curve(inputs.inflation_om_curve, lib, n, sy, sm, missing)
-    infl_land_rates = _resolve_curve(inputs.inflation_land_curve, lib, n, sy, sm, missing)
-    infl_opex_rates = _resolve_curve(inputs.inflation_opex_curve, lib, n, sy, sm, missing)
+    infl_power_rates = _resolve_curve(inputs.inflation_power_curve, lib, n, sy, sm, missing, strict)
+    infl_ppa_rates = _resolve_curve(inputs.inflation_ppa_curve, lib, n, sy, sm, missing, strict)
+    infl_goo_rates = _resolve_curve(inputs.inflation_goo_curve, lib, n, sy, sm, missing, strict)
+    infl_om_rates = _resolve_curve(inputs.inflation_om_curve, lib, n, sy, sm, missing, strict)
+    infl_land_rates = _resolve_curve(inputs.inflation_land_curve, lib, n, sy, sm, missing, strict)
+    infl_opex_rates = _resolve_curve(inputs.inflation_opex_curve, lib, n, sy, sm, missing, strict)
 
     infl_power_idx = _build_inflation_index(infl_power_rates, n, sy, sm)
     infl_ppa_idx = _build_inflation_index(infl_ppa_rates, n, sy, sm)

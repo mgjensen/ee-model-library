@@ -271,3 +271,68 @@ def test_selected_curves_dict_populated():
     # Fields left empty should not appear
     assert "bess_revenue" not in out.selected_curves
     assert "interest_rate" not in out.selected_curves
+
+
+# ============================================================================
+# NAMED CURVE SETS (Session 6 — UC Model Learnings)
+# ============================================================================
+
+def test_named_lookup_identical_to_direct():
+    """Looking up a curve by name produces same output as passing values directly."""
+    vals = [50.0, 52.0, 54.0] * 4  # 12 months
+    lib = CurveLibrary(curves={
+        "MPP QLD": PriceCurve(name="MPP QLD", category="wholesale",
+                              unit="AUD/MWh", values=vals, start_year=2026)
+    })
+    out = calculate(Inputs(
+        periods=12, start_year=2026, start_month=1,
+        library=lib, wholesale_curve="MPP QLD",
+    ))
+    assert out.wholesale_price_monthly == vals
+
+
+def test_strict_missing_raises_with_available():
+    """In strict mode, missing curve name raises ValueError listing available names."""
+    lib = CurveLibrary(curves={
+        "curve_A": PriceCurve(name="curve_A", category="test", unit="x", values=[1.0], start_year=2026),
+        "curve_B": PriceCurve(name="curve_B", category="test", unit="x", values=[2.0], start_year=2026),
+    })
+    with pytest.raises(ValueError, match="Curve 'bogus' not found.*curve_A.*curve_B"):
+        calculate(Inputs(
+            periods=12, start_year=2026, start_month=1,
+            library=lib, wholesale_curve="bogus", strict_lookup=True,
+        ))
+
+
+def test_strict_false_missing_appends_to_missing():
+    """Non-strict mode (default) reports missing curves without error."""
+    lib = CurveLibrary(curves={})
+    out = calculate(Inputs(
+        periods=12, start_year=2026, start_month=1,
+        library=lib, wholesale_curve="bogus",
+    ))
+    assert "bogus" in out.missing_curves
+    assert out.wholesale_price_monthly == [0.0] * 12
+
+
+def test_short_curve_extended_with_last_value():
+    """Curve shorter than periods → last value held."""
+    lib = CurveLibrary(curves={
+        "short": PriceCurve(name="short", category="test", unit="x",
+                           values=[10.0, 20.0], start_year=2026),
+    })
+    out = calculate(Inputs(
+        periods=12, start_year=2026, start_month=1,
+        library=lib, wholesale_curve="short",
+    ))
+    assert out.wholesale_price_monthly[0] == 10.0
+    assert out.wholesale_price_monthly[1] == 20.0
+    # Periods 2-11: extended with last value (20.0)
+    assert all(v == 20.0 for v in out.wholesale_price_monthly[2:])
+
+
+def test_no_library_default_behavior():
+    """No library, no curve names → all zeros, no errors."""
+    out = calculate(Inputs(periods=12, start_year=2026, start_month=1))
+    assert out.wholesale_price_monthly == [0.0] * 12
+    assert out.missing_curves == []
