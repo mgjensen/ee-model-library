@@ -603,3 +603,136 @@ class TestDSCRLookback:
         for p in range(12):
             assert math.isnan(out.dscr_6m_lookback[p])
             assert math.isnan(out.dscr_12m_lookback[p])
+
+
+# ============================================================================
+# DUAL CONTRACTED/MERCHANT DSCR (Session 2 — UC Model Learnings)
+# ============================================================================
+
+def _make_dual_dscr_inputs(
+    n=300, contracted_dscr=1.25, merchant_dscr=1.80, merchant_start=180
+):
+    """Build inputs with a single PV stream having dual DSCR targets.
+    
+    300 periods, PPA for 15 years (180 months), merchant after.
+    """
+    cfads = [50.0] * n  # flat 50 DKKk/month
+    return Inputs(
+        periods=n, start_year=2026, start_month=1,
+        dscr_streams=[
+            DSCRStream(
+                name="pv_contracted",
+                target_dscr=contracted_dscr,
+                cfads=cfads,
+                merchant_dscr=merchant_dscr,
+                merchant_start_period=merchant_start,
+            ),
+        ],
+        tenor_months=240,
+        payment_months=[6, 12],
+        swap_rate=0.03,
+        hedge_pct=0.80,
+        reference_rate=0.02,
+        margin_rates=[0.020],
+        margin_step_years=[0],
+        leverage_cap_pct=0.80,
+        total_capex_DKKk=100_000.0,
+        construction_end_period=12,
+    )
+
+
+class TestDualDSCR:
+    def test_dual_backward_compat_no_merchant(self):
+        """Without merchant fields, behavior identical to flat target."""
+        cfads = [50.0] * 300
+        inp_flat = Inputs(
+            periods=300, start_year=2026, start_month=1,
+            dscr_streams=[DSCRStream(name="pv", target_dscr=1.25, cfads=cfads)],
+            tenor_months=240, payment_months=[6, 12],
+            swap_rate=0.03, hedge_pct=0.80, reference_rate=0.02,
+            margin_rates=[0.020], margin_step_years=[0],
+            leverage_cap_pct=0.80, total_capex_DKKk=100_000.0,
+            construction_end_period=12,
+        )
+        out_flat = calculate(inp_flat)
+        inp_none = Inputs(
+            periods=300, start_year=2026, start_month=1,
+            dscr_streams=[DSCRStream(name="pv", target_dscr=1.25, cfads=cfads,
+                                     merchant_dscr=None, merchant_start_period=None)],
+            tenor_months=240, payment_months=[6, 12],
+            swap_rate=0.03, hedge_pct=0.80, reference_rate=0.02,
+            margin_rates=[0.020], margin_step_years=[0],
+            leverage_cap_pct=0.80, total_capex_DKKk=100_000.0,
+            construction_end_period=12,
+        )
+        out_none = calculate(inp_none)
+        assert abs(out_flat.total_debt - out_none.total_debt) < 1.0
+
+    def test_dual_facility_smaller_than_flat(self):
+        """Dual DSCR with 1.80x merchant tail → less borrowing than flat 1.25x."""
+        out_dual = calculate(_make_dual_dscr_inputs())
+        out_flat = calculate(_make_dual_dscr_inputs(merchant_dscr=None, merchant_start=None))
+        assert out_dual.total_debt < out_flat.total_debt, \
+            f"Dual {out_dual.total_debt:.0f} should be < flat {out_flat.total_debt:.0f}"
+
+    def test_dual_contracted_dscr_meets_target(self):
+        """DSCR during contracted period ≈ contracted target."""
+        out = calculate(_make_dual_dscr_inputs())
+        # Check DSCR in contracted window (periods 12-179)
+        contracted_dscr = [out.dscr_achieved[p] for p in range(12, 180)
+                          if not math.isnan(out.dscr_achieved[p]) and out.dscr_achieved[p] < 900]
+        if contracted_dscr:
+            avg = sum(contracted_dscr) / len(contracted_dscr)
+            assert abs(avg - 1.25) < 0.15, f"Contracted avg DSCR {avg:.3f} should be near 1.25"
+
+    def test_dual_merchant_dscr_meets_target(self):
+        """DSCR during merchant tail ≈ merchant target."""
+        out = calculate(_make_dual_dscr_inputs())
+        # Check DSCR in merchant window (periods 180+)
+        merchant_dscr = [out.dscr_achieved[p] for p in range(180, 300)
+                        if not math.isnan(out.dscr_achieved[p]) and out.dscr_achieved[p] < 900]
+        if merchant_dscr:
+            avg = sum(merchant_dscr) / len(merchant_dscr)
+            assert abs(avg - 1.80) < 0.25, f"Merchant avg DSCR {avg:.3f} should be near 1.80"
+
+    def test_dual_blended_target_changes_at_boundary(self):
+        """Blended DSCR target should shift at merchant_start_period."""
+        out = calculate(_make_dual_dscr_inputs())
+        # Pre-merchant blended should be ≈ 1.25
+        pre = [out.blended_dscr_target[p] for p in range(12, 100)
+               if not math.isnan(out.blended_dscr_target[p])]
+        if pre:
+            assert abs(pre[0] - 1.25) < 0.01
+        # Post-merchant blended should be ≈ 1.80
+        post = [out.blended_dscr_target[p] for p in range(200, 250)
+                if not math.isnan(out.blended_dscr_target[p])]
+        if post:
+            assert abs(post[0] - 1.80) < 0.01
+
+    def test_dual_fully_repaid(self):
+        """Debt should still fully repay with dual targets."""
+        out = calculate(_make_dual_dscr_inputs())
+        assert out.fully_repaid
+
+    def test_dual_two_streams_different_boundaries(self):
+        """Two streams with different merchant boundaries."""
+        n = 300
+        cfads_pv = [30.0] * n
+        cfads_bess = [20.0] * n
+        inp = Inputs(
+            periods=n, start_year=2026, start_month=1,
+            dscr_streams=[
+                DSCRStream(name="pv", target_dscr=1.25, cfads=cfads_pv,
+                          merchant_dscr=1.80, merchant_start_period=180),
+                DSCRStream(name="bess", target_dscr=1.20, cfads=cfads_bess,
+                          merchant_dscr=1.80, merchant_start_period=120),
+            ],
+            tenor_months=240, payment_months=[6, 12],
+            swap_rate=0.03, hedge_pct=0.80, reference_rate=0.02,
+            margin_rates=[0.020], margin_step_years=[0],
+            leverage_cap_pct=0.80, total_capex_DKKk=100_000.0,
+            construction_end_period=12,
+        )
+        out = calculate(inp)
+        assert out.fully_repaid
+        assert out.total_debt > 0

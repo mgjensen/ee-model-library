@@ -41,10 +41,21 @@ from pydantic import BaseModel, Field, model_validator
 # ============================================================================
 
 class DSCRStream(BaseModel):
-    """Per-revenue-stream DSCR target for sculpted repayment."""
+    """Per-revenue-stream DSCR target for sculpted repayment.
+
+    Supports dual contracted/merchant DSCR targets. If merchant_dscr and
+    merchant_start_period are set, target_dscr applies to contracted periods
+    (before merchant_start_period) and merchant_dscr applies after.
+    """
     name: str = Field(..., description="e.g. 'pv_contracted'")
-    target_dscr: float = Field(..., gt=0)
+    target_dscr: float = Field(..., gt=0, description="Contracted-period DSCR target")
     cfads: list[float] = Field(..., description="Monthly CFADS DKKk")
+    merchant_dscr: Optional[float] = Field(
+        None, gt=0, description="Merchant-period DSCR target (after PPA/tolling expires)"
+    )
+    merchant_start_period: Optional[int] = Field(
+        None, ge=0, description="0-based period when merchant DSCR takes effect"
+    )
 
 
 # ============================================================================
@@ -226,17 +237,35 @@ def _monthly_rate(
     return annual / 12.0
 
 
+def _stream_target_at_period(stream: DSCRStream, p: int) -> float:
+    """Return the applicable DSCR target for a stream at period p.
+
+    Uses merchant_dscr if the period falls at or after merchant_start_period.
+    """
+    if (stream.merchant_dscr is not None
+            and stream.merchant_start_period is not None
+            and p >= stream.merchant_start_period):
+        return stream.merchant_dscr
+    return stream.target_dscr
+
+
 def _blended_dscr_for_sa(
     streams: list[DSCRStream],
     sa_periods: list[int],
 ) -> float:
-    """CFADS-weighted blended target DSCR for a semi-annual period."""
+    """CFADS-weighted blended target DSCR for a semi-annual period.
+
+    Uses the representative period (last in SA group) to pick contracted vs
+    merchant target per stream, then blends by CFADS weight.
+    """
+    rep_period = sa_periods[-1]
     total_cfads = 0.0
     weighted = 0.0
     for s in streams:
         scf = sum(s.cfads[p] for p in sa_periods)
+        target = _stream_target_at_period(s, rep_period)
         total_cfads += scf
-        weighted += scf * s.target_dscr
+        weighted += scf * target
     return weighted / total_cfads if total_cfads > 1e-9 else 999.0
 
 
