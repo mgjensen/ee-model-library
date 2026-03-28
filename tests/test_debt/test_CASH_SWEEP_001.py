@@ -197,3 +197,91 @@ def test_excel_formulas():
     for key in ("cash_swept", "cash_after_sweep", "cumulative_swept"):
         assert key in formulas
         assert formulas[key].startswith("=")
+
+
+# ============================================================================
+# DSCR THRESHOLD GATING (Session 3 — UC Model Learnings)
+# ============================================================================
+
+def _make_threshold_inputs(dscr_values, threshold=1.15):
+    """Build inputs with DSCR threshold gating."""
+    n = len(dscr_values)
+    return Inputs(
+        periods=n, start_year=2026, start_month=1,
+        active=True,
+        cash_available=[100.0] * n,
+        sweep_pct=0.50,
+        debt_opening_balance=[1000.0] * n,
+        dscr_threshold=threshold,
+        dscr_monthly=dscr_values,
+    )
+
+
+def test_dscr_threshold_low_triggers_sweep():
+    """DSCR 1.10 < threshold 1.15 → sweep fires."""
+    out = calculate(_make_threshold_inputs([1.10] * 12))
+    assert all(s > 0 for s in out.cash_swept)
+
+
+def test_dscr_threshold_high_skips_sweep():
+    """DSCR 1.30 >= threshold 1.15 → sweep skipped."""
+    out = calculate(_make_threshold_inputs([1.30] * 12))
+    assert all(s == 0 for s in out.cash_swept)
+
+
+def test_dscr_threshold_mixed():
+    """Sweep fires only in periods where DSCR < threshold."""
+    dscr = [1.10, 1.30, 1.05, 1.20, 1.14, 1.16]
+    out = calculate(_make_threshold_inputs(dscr))
+    # Periods 0, 2, 4: DSCR < 1.15 → sweep
+    # Periods 1, 3, 5: DSCR >= 1.15 → no sweep
+    assert out.cash_swept[0] > 0
+    assert out.cash_swept[1] == 0
+    assert out.cash_swept[2] > 0
+    assert out.cash_swept[3] == 0
+    assert out.cash_swept[4] > 0
+    assert out.cash_swept[5] == 0
+
+
+def test_dscr_threshold_none_sweeps_unconditionally():
+    """No threshold → current behavior (sweep every active period)."""
+    n = 12
+    inp = Inputs(
+        periods=n, start_year=2026, start_month=1,
+        active=True,
+        cash_available=[100.0] * n,
+        sweep_pct=0.50,
+        debt_opening_balance=[1000.0] * n,
+        dscr_threshold=None,
+        dscr_monthly=None,
+    )
+    out = calculate(inp)
+    assert all(s > 0 for s in out.cash_swept)
+
+
+def test_dscr_threshold_validation_missing_array():
+    """dscr_threshold set without dscr_monthly → ValueError."""
+    with pytest.raises(ValueError, match="dscr_monthly must be provided"):
+        Inputs(
+            periods=12, start_year=2026, start_month=1,
+            active=True,
+            cash_available=[100.0] * 12,
+            sweep_pct=0.50,
+            debt_opening_balance=[1000.0] * 12,
+            dscr_threshold=1.15,
+            dscr_monthly=None,
+        )
+
+
+def test_dscr_threshold_validation_wrong_length():
+    """dscr_monthly wrong length → ValueError."""
+    with pytest.raises(ValueError, match="dscr_monthly length"):
+        Inputs(
+            periods=12, start_year=2026, start_month=1,
+            active=True,
+            cash_available=[100.0] * 12,
+            sweep_pct=0.50,
+            debt_opening_balance=[1000.0] * 12,
+            dscr_threshold=1.15,
+            dscr_monthly=[1.10] * 10,
+        )

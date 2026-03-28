@@ -59,6 +59,15 @@ class Inputs(BaseModel):
         None, description="0-based period when sweep resumes (exclusive)"
     )
 
+    # DSCR-threshold gating (optional — UC model pattern)
+    dscr_threshold: Optional[float] = Field(
+        None, gt=0,
+        description="Only sweep when period DSCR < threshold (e.g. 1.15). None = sweep unconditionally."
+    )
+    dscr_monthly: Optional[list[float]] = Field(
+        None, description="Monthly DSCR series. Required when dscr_threshold is set."
+    )
+
     # Debt balance for capping sweep
     debt_opening_balance: list[float] = Field(
         ..., description="Senior debt opening balance per period DKKk"
@@ -74,6 +83,12 @@ class Inputs(BaseModel):
         if len(self.debt_opening_balance) != n:
             raise ValueError(
                 f"debt_opening_balance length {len(self.debt_opening_balance)} != periods {n}"
+            )
+        if self.dscr_threshold is not None and self.dscr_monthly is None:
+            raise ValueError("dscr_monthly must be provided when dscr_threshold is set")
+        if self.dscr_monthly is not None and len(self.dscr_monthly) != n:
+            raise ValueError(
+                f"dscr_monthly length {len(self.dscr_monthly)} != periods {n}"
             )
         return self
 
@@ -129,6 +144,10 @@ def calculate(inputs: Inputs) -> Outputs:
                 active = False
         if active and inputs.debt_opening_balance[p] <= 0:
             active = False
+        # DSCR threshold gating: only sweep when DSCR is below threshold
+        if active and inputs.dscr_threshold is not None and inputs.dscr_monthly is not None:
+            if inputs.dscr_monthly[p] >= inputs.dscr_threshold:
+                active = False
 
         sweep_active_flag[p] = 1.0 if active else 0.0
 
