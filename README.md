@@ -2,7 +2,7 @@
 
 Python module library for renewable energy project finance — European Energy A/S.
 
-**Version:** v0.007 | **Last pushed:** 2026-03-28 | **Tests:** 1167 passed | **Modules:** 38 | **Branch:** `uc-learnings`
+**Version:** v0.008 | **Last pushed:** 2026-03-28 | **Tests:** 1167 passed | **Modules:** 38 | **Branch:** `uc-learnings`
 
 ---
 
@@ -141,6 +141,19 @@ config = ProjectConfig(
 result = run(config)
 write_workbook(result, config, "output/My_PV_Project.xlsx")
 ```
+
+---
+
+## Recent Changes (v0.008 — UC Model Learnings)
+
+| Module | Enhancement | Source |
+|--------|-------------|--------|
+| REV_002 | BESS degradation curves (`rte_curve`, `capacity_curve`) — CATL 20-year manufacturer data | UC Hybrid FID |
+| DEBT_SCULPT_001 | Dual contracted/merchant DSCR targets (1.25x PPA / 1.80x merchant) | UC Financing.Calc |
+| DEBT_SCULPT_001 | Multi-constraint sculpting (P50/P99/breakeven parallel passes, min principal) | UC Financing.Calc |
+| CASH_SWEEP_001 | DSCR-threshold-gated sweep (only fires when DSCR < 1.15x) | UC Financing.Calc |
+| PRICE_CURVES_001 | Strict named curve lookup with available-names error messages | UC curve naming |
+| AU.json | Full Australian market assumptions — CAPEX, debt, tax, OPEX, CATL curves | Upper Calliope QLD |
 
 ---
 

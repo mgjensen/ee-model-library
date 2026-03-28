@@ -173,6 +173,18 @@ def calculate(inputs: Inputs) -> Outputs: ...
 def get_excel_formulas(refs: dict) -> dict: ...
 ```
 
+## Recent enhancements (UC Model Learnings, v0.008)
+
+**REV_002** — Optional `rte_curve` and `capacity_curve` inputs (annual values). Override flat `round_trip_efficiency` with manufacturer degradation curves (e.g. CATL 20-year). Capacity curve scales discharge volume; RTE curve affects Section E GoO losses. Outputs: `effective_rte`, `effective_capacity_factor` per period.
+
+**DEBT_SCULPT_001** — Dual contracted/merchant DSCR targets: `DSCRStream.merchant_dscr` + `merchant_start_period`. Banks use lower DSCR during PPA (1.25x) and higher during merchant tail (1.80x). Multi-constraint sculpting: `constraint_scenarios` input runs parallel P50/P99/breakeven passes, takes element-wise min principal, auto-sizes facility via bisection. Outputs: `binding_constraint`, `per_constraint_dscr`.
+
+**CASH_SWEEP_001** — DSCR-threshold-gated sweep: `dscr_threshold` + `dscr_monthly`. Sweep only fires when DSCR < threshold (e.g. 1.15x). Healthy periods retain cash for distribution.
+
+**PRICE_CURVES_001** — `strict_lookup` mode: missing curve names raise `ValueError` listing available curves. Supports named curve references (e.g. "MPP QLD - MESSY") for scenario decoupling.
+
+**AU.json** — Populated with real benchmarks from Upper Calliope PV & BESS Hybrid FID (QLD, Feb 2026). CATL RTE/capacity curves, tiered LTSA, DSCR targets (P50/P99), all AUD-denominated, every value source-tagged.
+
 ## Common patterns
 
 **Inflation:** `factor = start_factor * (1 + rate) ** max(0, year - start_year)`
