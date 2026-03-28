@@ -71,6 +71,8 @@
             "om_aud_per_mw_per_year_yr1_3": 7270,
             "om_aud_per_mw_per_year_yr4_plus": 6540,
             "ltsa_tiered_tiers": 8,
+            "ltsa_rates_aud_per_mw": [0.89, 7.17, 9.63, 7.88, 0.89, 7.17, 9.63, 7.88],
+            "ltsa_start_years": [1, 4, 11, 16, 21, 24, 31, 36],
             "land_lease_aud_per_mw_per_year": 680,
             "insurance_aud_per_mw_per_year": 3250,
             "asset_management_aud_per_mw_per_year": 9480,
