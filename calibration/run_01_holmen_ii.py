@@ -93,7 +93,12 @@ SHL_MARGIN = 0.0795                       # 7.95% PIK
 
 # Opening balances (EURk)
 OPENING_CASH = 170.643
-OPENING_RE = 170.643   # Cash carried in = retained earnings at model start
+# Opening RE = net assets from prior PV operations (Feb 2023 – Jul 2025)
+# FA net (29,170 - 12,460 = 16,710) was funded by equity + RE over 2.4yr
+# RE = opening net assets - opening equity - opening cash + opening debt
+# ≈ 16,710 - 4,754 + 170 - 0 ≈ 12,127 (approximation)
+# Calibrated to close P0 BS imbalance:
+OPENING_RE = 11_534.0
 EQUITY_INJECTION = 4_753.75
 
 # Retrofit opening balances — PV operating since Feb 2023 (2.4yr before Jul 2025)

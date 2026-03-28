@@ -575,10 +575,15 @@ def run(config: ProjectConfig) -> AssemblyResult:
         constr_out = out.get("CONSTR_FINANCE_001")
         if constr_out:
             interest = [interest[p] + constr_out.interest[p] for p in range(n)]
-        # Add SHL interest (PIK or cash — both are P&L charges)
+        # Add SHL interest — post-COD only (pre-COD interest is capitalised as IDC)
         shl_out = out.get("SHL_001")
         if shl_out:
-            interest = [interest[p] + shl_out.interest[p] for p in range(n)]
+            # Determine COD period for IDC split
+            _cod = (config.constr_finance.cod_period if config.constr_finance
+                    else (config.capex.construction_start_period + config.capex.construction_periods
+                          if config.capex else 0))
+            interest = [interest[p] + (shl_out.interest[p] if p >= _cod else 0.0)
+                        for p in range(n)]
         tax_charge = tax_out.tax_charge_accrued if tax_out else (
             tax_de_out.tax_charge_accrued if tax_de_out else _zeros(n)
         )
@@ -632,12 +637,18 @@ def run(config: ProjectConfig) -> AssemblyResult:
             cf_princ = _add_series(cf_princ or None, constr_out.repayment, n=n)
             cf_int = [cf_int[p] + constr_out.interest[p] for p in range(n)]
 
-        # SHL wiring into CF: PIK interest is non-cash (add back in CFO),
-        # cash interest + repayments flow through CFF
+        # SHL wiring into CF: only post-COD PIK interest is added back
+        # (pre-COD interest was capitalised, not in PL, so no add-back needed)
         shl_out = out.get("SHL_001")
         if shl_out:
-            # PIK interest: charged in PL but not paid → add back as non-cash
-            shl_pik = [shl_out.interest[p] - shl_out.interest_cash[p] for p in range(n)]
+            _cod = (config.constr_finance.cod_period if config.constr_finance
+                    else (config.capex.construction_start_period + config.capex.construction_periods
+                          if config.capex else 0))
+            # Post-COD PIK interest: charged in PL but not paid → add back as non-cash
+            shl_pik = [
+                (shl_out.interest[p] - shl_out.interest_cash[p]) if p >= _cod else 0.0
+                for p in range(n)
+            ]
             cf_dep = [cf_dep[p] + shl_pik[p] for p in range(n)]
             # Cash interest (0 for PIK mode) flows through CFF interest_paid
             cf_int = [cf_int[p] + shl_out.interest_cash[p] for p in range(n)]
@@ -677,6 +688,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
         if repow_out:
             bs_capex = [bs_capex[p] + repow_out.repowering_cost_monthly[p] for p in range(n)]
             bs_dep = [bs_dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
+        # Capitalise pre-COD SHL interest as IDC (interest during construction)
+        shl_out = out.get("SHL_001")
+        if shl_out:
+            _cod = (config.constr_finance.cod_period if config.constr_finance
+                    else (config.capex.construction_start_period + config.capex.construction_periods
+                          if config.capex else 0))
+            bs_capex = [bs_capex[p] + (shl_out.interest[p] if p < _cod else 0.0)
+                        for p in range(n)]
 
         bs_kwargs: dict = dict(
             periods=n,
