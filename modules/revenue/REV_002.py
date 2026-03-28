@@ -117,6 +117,14 @@ class Inputs(BaseModel):
     tolling_inflation_rate: float = Field(0.025, ge=0, description="Annual inflation for tolling fee")
     tolling_inflation_start_year: int = Field(2025, description="Year from which tolling inflation compounds")
 
+    # --- Optional degradation curves (annual values, override flat RTE/capacity) ---
+    rte_curve: Optional[list[float]] = Field(
+        None, description="Annual RTE values (0-1), one per operational year. Overrides flat round_trip_efficiency."
+    )
+    capacity_curve: Optional[list[float]] = Field(
+        None, description="Annual capacity retention factors (0-1), one per operational year. Scales discharge volume."
+    )
+
     # External curve pass-through mode
     external_mode: bool = Field(False, description="If True, use external BESS revenue curve instead of internal calc")
     external_bess_revenue_DKKk: list[float] = Field(default_factory=list)
@@ -165,6 +173,16 @@ class Inputs(BaseModel):
                     f"tolling_start_period {self.tolling_start_period} > "
                     f"tolling_end_period {self.tolling_end_period}"
                 )
+        if self.rte_curve is not None:
+            if not self.rte_curve:
+                raise ValueError("rte_curve must not be empty when provided")
+            if any(v <= 0 or v > 1.0 for v in self.rte_curve):
+                raise ValueError("rte_curve values must be in (0, 1]")
+        if self.capacity_curve is not None:
+            if not self.capacity_curve:
+                raise ValueError("capacity_curve must not be empty when provided")
+            if any(v <= 0 or v > 1.0 for v in self.capacity_curve):
+                raise ValueError("capacity_curve values must be in (0, 1]")
         return self
 
 
@@ -218,6 +236,10 @@ class Outputs(BaseModel):
     total_costs: list[float]                    # DKKk — charging + import + export − adjustments
     net_revenue: list[float]                    # DKKk
 
+    # --- Degradation curves (actual values used per period) ---
+    effective_rte: list[float]                 # RTE applied each period (flat or from curve)
+    effective_capacity_factor: list[float]     # capacity factor each period (1.0 or from curve)
+
     # Annual aggregation
     annual_net_revenue: list[float]
 
@@ -260,6 +282,29 @@ def _factor_series(
         f = _indexation_factor(year, inflation_start_year, indexation_start_factor, inflation_rate)
         for p in year_periods:
             out[p] = f
+    return out
+
+
+def _annual_to_monthly(
+    curve: list[float],
+    year_groups: OrderedDict,
+    periods: int,
+    default: float,
+) -> list[float]:
+    """Map annual curve values to monthly periods.
+
+    Year 0 in the curve maps to the first calendar year in year_groups.
+    If the curve is shorter than the number of years, the last value is held.
+    """
+    out = [default] * periods
+    years = list(year_groups.keys())
+    for i, year in enumerate(years):
+        if i < len(curve):
+            val = curve[i]
+        else:
+            val = curve[-1]  # hold last value
+        for p in year_groups[year]:
+            out[p] = val
     return out
 
 
@@ -395,12 +440,24 @@ def calculate(inputs: Inputs) -> Outputs:
             bess_net_ex_multimarket=ext_rev,
             multimarket_revenue=zeros[:],
             tolling_revenue=tolling_rev,
+            effective_rte=[inputs.round_trip_efficiency] * n,
+            effective_capacity_factor=[1.0] * n,
             gross_revenue=gross,
             total_costs=zeros[:],
             net_revenue=gross,
             annual_net_revenue=annual_net,
             total_net_revenue=sum(gross),
         )
+
+    # --- Degradation curves ---
+    if inputs.capacity_curve is not None:
+        cap_factors = _annual_to_monthly(inputs.capacity_curve, yg, n, 1.0)
+    else:
+        cap_factors = [1.0] * n
+    if inputs.rte_curve is not None:
+        rte_monthly = _annual_to_monthly(inputs.rte_curve, yg, n, inputs.round_trip_efficiency)
+    else:
+        rte_monthly = [inputs.round_trip_efficiency] * n
 
     # --- A. Discharge revenue ---
     dis_factor = _factor_series(
@@ -410,7 +467,8 @@ def calculate(inputs: Inputs) -> Outputs:
     dis_price_inf = [
         inputs.discharge_price_DKK_per_MWh[p] * dis_factor[p] for p in range(n)
     ]
-    dis_volume = list(inputs.discharge_volume_MWh)
+    # Capacity curve scales discharge volume (effective energy available)
+    dis_volume = [inputs.discharge_volume_MWh[p] * cap_factors[p] for p in range(n)]
     dis_revenue = [dis_volume[p] * dis_price_inf[p] / 1000.0 for p in range(n)]
 
     # --- B. Charging costs ---
@@ -481,10 +539,9 @@ def calculate(inputs: Inputs) -> Outputs:
     ]
 
     # --- E. System adjustments ---
-    # Round-trip losses on PV-supplied energy
-    rte = inputs.round_trip_efficiency
+    # Round-trip losses on PV-supplied energy (uses per-period RTE from curve or flat)
     goo_lost_vol = [
-        inputs.pv_charge_volume_MWh[p] * (1.0 - rte) for p in range(n)
+        inputs.pv_charge_volume_MWh[p] * (1.0 - rte_monthly[p]) for p in range(n)
     ]
     # GoO revenue lost (negative for P&L; cost to the project)
     goo_rev_lost = [
@@ -576,6 +633,9 @@ def calculate(inputs: Inputs) -> Outputs:
         multimarket_revenue=multi_rev,
         # H
         tolling_revenue=tolling_rev,
+        # Degradation
+        effective_rte=rte_monthly,
+        effective_capacity_factor=cap_factors,
         # G
         gross_revenue=gross_rev,
         total_costs=total_costs,

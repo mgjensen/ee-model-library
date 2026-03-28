@@ -830,3 +830,131 @@ def test_external_mode_validation():
             external_mode=True,
             external_bess_revenue_DKKk=[1.0] * 10,  # wrong length
         )
+
+
+# ============================================================================
+# DEGRADATION CURVES (Session 1 — UC Model Learnings)
+# ============================================================================
+
+# Real CATL 20-year curves from Upper Calliope FID model
+_RTE_CURVE = [0.820, 0.815, 0.808, 0.804, 0.801, 0.800, 0.799, 0.797,
+              0.796, 0.795, 0.794, 0.793, 0.791, 0.790, 0.789, 0.788,
+              0.787, 0.786, 0.785, 0.784]
+
+_CAP_CURVE = [0.948, 0.928, 0.901, 0.881, 0.863, 0.844, 0.828,
+              0.813, 0.796, 0.782, 0.769, 0.754, 0.742, 0.730,
+              0.718, 0.704, 0.693, 0.682, 0.671, 0.661]
+
+
+def _make_degradation_inputs(n=240, rte_curve=None, capacity_curve=None):
+    """Build a 20-year BESS config for degradation curve testing."""
+    return Inputs(
+        periods=n, start_year=2026, start_month=1,
+        power_MW=28.0, energy_MWh_installed=112.0,
+        round_trip_efficiency=0.82,
+        discharge_volume_MWh=[100.0] * n,
+        discharge_price_DKK_per_MWh=[50.0] * n,
+        grid_charge_volume_MWh=[50.0] * n,
+        grid_charge_price_DKK_per_MWh=[40.0] * n,
+        pv_charge_volume_MWh=[60.0] * n,
+        pv_charge_price_DKK_per_MWh=[30.0] * n,
+        goo_price_DKK_per_MWh=[5.0] * n,
+        multimarket_pct=[0.0] * n,
+        rte_curve=rte_curve,
+        capacity_curve=capacity_curve,
+    )
+
+
+def test_degradation_no_curves_uses_flat_rte():
+    """Without curves, effective_rte equals flat round_trip_efficiency."""
+    inp = _make_degradation_inputs()
+    out = calculate(inp)
+    assert all(v == 0.82 for v in out.effective_rte)
+    assert all(v == 1.0 for v in out.effective_capacity_factor)
+
+
+def test_degradation_rte_curve_overrides_flat():
+    """RTE curve replaces flat value; year 1 = 0.820, year 20 = 0.784."""
+    out = calculate(_make_degradation_inputs(rte_curve=_RTE_CURVE))
+    # Year 1 = periods 0-11 → RTE 0.820
+    assert abs(out.effective_rte[0] - 0.820) < 1e-6
+    # Year 20 = periods 228-239 → RTE 0.784
+    assert abs(out.effective_rte[239] - 0.784) < 1e-6
+
+
+def test_degradation_rte_affects_goo_losses():
+    """Higher RTE loss in year 20 → more GoO volume lost."""
+    out_flat = calculate(_make_degradation_inputs())
+    out_curve = calculate(_make_degradation_inputs(rte_curve=_RTE_CURVE))
+    # Year 1: curve RTE (0.82) == flat RTE (0.82) → same losses
+    assert abs(out_flat.goo_lost_volume[0] - out_curve.goo_lost_volume[0]) < 0.01
+    # Year 20: curve RTE (0.784) < flat (0.82) → more losses with curve
+    assert out_curve.goo_lost_volume[239] > out_flat.goo_lost_volume[239]
+
+
+def test_degradation_capacity_curve_scales_discharge():
+    """Capacity curve reduces discharge volume; year 20 materially lower."""
+    out_flat = calculate(_make_degradation_inputs())
+    out_cap = calculate(_make_degradation_inputs(capacity_curve=_CAP_CURVE))
+    # Year 1: capacity 0.948 → discharge = 100 * 0.948 = 94.8
+    assert abs(out_cap.discharge_volume[0] - 100.0 * 0.948) < 0.01
+    # Year 20: capacity 0.661 → discharge = 100 * 0.661 = 66.1
+    assert abs(out_cap.discharge_volume[239] - 100.0 * 0.661) < 0.01
+    # Flat has full 100.0
+    assert abs(out_flat.discharge_volume[0] - 100.0) < 0.01
+
+
+def test_degradation_capacity_reduces_revenue():
+    """Capacity degradation → lower lifetime revenue."""
+    out_flat = calculate(_make_degradation_inputs())
+    out_cap = calculate(_make_degradation_inputs(capacity_curve=_CAP_CURVE))
+    assert out_cap.total_net_revenue < out_flat.total_net_revenue
+
+
+def test_degradation_both_curves_combined():
+    """Both curves together produce lower revenue than either alone."""
+    out_flat = calculate(_make_degradation_inputs())
+    out_rte = calculate(_make_degradation_inputs(rte_curve=_RTE_CURVE))
+    out_cap = calculate(_make_degradation_inputs(capacity_curve=_CAP_CURVE))
+    out_both = calculate(_make_degradation_inputs(
+        rte_curve=_RTE_CURVE, capacity_curve=_CAP_CURVE
+    ))
+    assert out_both.total_net_revenue < out_rte.total_net_revenue
+    assert out_both.total_net_revenue < out_cap.total_net_revenue
+    assert out_both.total_net_revenue < out_flat.total_net_revenue
+
+
+def test_degradation_short_curve_holds_last_value():
+    """If curve is shorter than project years, last value is held."""
+    short_rte = [0.82, 0.80]  # only 2 years
+    out = calculate(_make_degradation_inputs(rte_curve=short_rte))
+    # Year 3+ should use 0.80 (last value)
+    assert abs(out.effective_rte[24] - 0.80) < 1e-6
+    assert abs(out.effective_rte[239] - 0.80) < 1e-6
+
+
+def test_degradation_capacity_factor_output_matches_curve():
+    """Output effective_capacity_factor reflects the input curve."""
+    out = calculate(_make_degradation_inputs(capacity_curve=_CAP_CURVE))
+    assert abs(out.effective_capacity_factor[0] - 0.948) < 1e-6
+    assert abs(out.effective_capacity_factor[239] - 0.661) < 1e-6
+
+
+def test_degradation_validation_rte_curve_empty():
+    with pytest.raises(ValueError, match="rte_curve must not be empty"):
+        _make_degradation_inputs(rte_curve=[])
+
+
+def test_degradation_validation_rte_curve_invalid_values():
+    with pytest.raises(ValueError, match="rte_curve values must be in"):
+        _make_degradation_inputs(rte_curve=[1.5])
+
+
+def test_degradation_validation_capacity_curve_empty():
+    with pytest.raises(ValueError, match="capacity_curve must not be empty"):
+        _make_degradation_inputs(capacity_curve=[])
+
+
+def test_degradation_validation_capacity_curve_invalid():
+    with pytest.raises(ValueError, match="capacity_curve values must be in"):
+        _make_degradation_inputs(capacity_curve=[0.0])
