@@ -1,53 +1,130 @@
 {
-  "_meta": {
-    "market": "Australia",
-    "currency": "AUD",
-    "last_updated": "2026-03",
-    "sources": ["AEMO", "Clean Energy Finance Corporation", "EE internal benchmarks"]
-  },
-  "cost_of_capital": {
-    "tax_rate": 0.30,
-    "cost_of_debt_posttax": 0.048,
-    "capital_structure_debt": 0.65,
-    "capital_structure_equity": 0.35,
-    "unlevered_beta": 0.52,
-    "risk_free_rate": 0.043,
-    "country_risk_premium": 0.00,
-    "corporate_risk_margin": 0.012,
-    "erp": 0.060,
-    "ppa_erp_reduction_factor": 0.88,
-    "merchant_erp_multiplier": 1.1
-  },
-  "pv_assumptions": {
-    "p50_yield_mwh_per_mwp": 1650,
-    "degradation_per_year": 0.003,
-    "typical_dc_ac_ratio": 1.35,
-    "availability_factor": 0.97
-  },
-  "wind_assumptions": {
-    "p50_yield_mwh_per_mw": 3100,
-    "availability_factor": 0.97,
-    "wake_loss_factor": 0.94
-  },
-  "capex": {
-    "pv_aud_per_mwp": 820000,
-    "wind_aud_per_mw": 2100000,
-    "note": "Estimated — flag for update from live projects"
-  },
-  "opex": {
-    "pv_aud_per_mwp_per_year": 12000,
-    "wind_aud_per_mw_per_year": 60000,
-    "annual_escalation": 0.030,
-    "note": "Estimated — flag for update from live projects"
-  },
-  "debt": {
-    "typical_tenor_years": 15,
-    "typical_interest_rate": 0.068,
-    "typical_gearing": 0.65
-  },
-  "tax": {
-    "tax_rate": 0.30,
-    "depreciation_rate": 0.20,
-    "note": "Australian corporate tax; accelerated depreciation under ITAA 1997 (simplified)"
-  }
+    "_meta": {
+        "market": "Australia",
+        "currency": "AUD",
+        "last_updated": "2026-03",
+        "sources": [
+            "Upper Calliope PV & BESS Detailed Hybrid v4 (QLD, Feb 2026)",
+            "CATL battery warranty curves",
+            "AEMO market data",
+            "EE internal benchmarks"
+        ]
+    },
+    "cost_of_capital": {
+        "tax_rate": 0.30,
+        "wacc": 0.062,
+        "cost_of_equity": 0.084,
+        "capital_structure_debt": 0.80,
+        "capital_structure_equity": 0.20,
+        "unlevered_beta": 0.52,
+        "risk_free_rate": 0.043,
+        "country_risk_premium": 0.00,
+        "corporate_risk_margin": 0.012,
+        "erp": 0.060,
+        "ppa_erp_reduction_factor": 0.88,
+        "merchant_erp_multiplier": 1.1,
+        "_source": "UC model WACC tab",
+        "_confidence": "green"
+    },
+    "pv_assumptions": {
+        "p50_yield_mwh_per_mwp": 2035,
+        "degradation_per_year": 0.0035,
+        "typical_dc_ac_ratio": 1.35,
+        "availability_factor": 0.99,
+        "_source": "UC model 1.1 Input_NTD — QLD irradiance",
+        "_confidence": "green"
+    },
+    "bess_assumptions": {
+        "rte_curve_20yr": [0.820, 0.815, 0.808, 0.804, 0.801, 0.800, 0.799, 0.797,
+                           0.796, 0.795, 0.794, 0.793, 0.791, 0.790, 0.789, 0.788,
+                           0.787, 0.786, 0.785, 0.784],
+        "capacity_curve_20yr": [0.948, 0.928, 0.901, 0.881, 0.863, 0.844, 0.828,
+                                0.813, 0.796, 0.782, 0.769, 0.754, 0.742, 0.730,
+                                0.718, 0.704, 0.693, 0.682, 0.671, 0.661],
+        "availability_factor": 0.992,
+        "cycles_per_day": 1.0,
+        "repowering_year": 21,
+        "repowering_cost_pct_of_capex": 0.32,
+        "_source": "UC model — CATL battery warranty curves",
+        "_confidence": "green"
+    },
+    "capex": {
+        "pv_aud_per_mwp": {
+            "epc": 807000,
+            "grid_connection": 83000,
+            "development": 24000,
+            "total": 914000,
+            "_confidence": "green"
+        },
+        "bess_2hr_aud_per_mw": 1312000,
+        "_source": "UC model 1.1 Input_NTD — CAPEX summary",
+        "_confidence": "green"
+    },
+    "opex": {
+        "pv": {
+            "om_aud_per_mw_per_year": 10860,
+            "land_lease_aud_per_mw_per_year": 5870,
+            "agency_aud_per_year_flat": 20000,
+            "_confidence": "green"
+        },
+        "bess": {
+            "om_aud_per_mw_per_year_yr1_3": 7270,
+            "om_aud_per_mw_per_year_yr4_plus": 6540,
+            "ltsa_tiered_tiers": 8,
+            "land_lease_aud_per_mw_per_year": 680,
+            "insurance_aud_per_mw_per_year": 3250,
+            "asset_management_aud_per_mw_per_year": 9480,
+            "_confidence": "green"
+        },
+        "inflation_rate": 0.0201,
+        "_source": "UC model 1.1 Input_NTD — OPEX schedules"
+    },
+    "debt": {
+        "construction": {
+            "ltv": 0.55,
+            "type": "bullet",
+            "all_in_rate": 0.04,
+            "bbsw_swap_rate_construction": 0.0323,
+            "_confidence": "green"
+        },
+        "senior": {
+            "max_gearing": 0.80,
+            "bbsw_swap_rate_ops": 0.0419,
+            "margin_senior": 0.0155,
+            "margin_construction": 0.0165,
+            "commitment_fee": 0.0062,
+            "upfront_fee": 0.009,
+            "hedge_pct_construction": 0.95,
+            "hedge_pct_ops": 0.80,
+            "payment_frequency": "quarterly",
+            "_confidence": "green"
+        },
+        "dsra": {
+            "months_forward": 6,
+            "_confidence": "green"
+        },
+        "letter_of_credit": {
+            "construction_pct": 0.008,
+            "operations_pct": 0.008,
+            "_confidence": "green"
+        },
+        "dscr_targets": {
+            "p50_contracted_pv": 1.25,
+            "p50_contracted_bess": 1.20,
+            "p50_merchant": 1.80,
+            "p99_contracted": 1.00,
+            "p99_merchant": 1.40,
+            "_confidence": "green"
+        },
+        "_source": "UC model Financing.Calc — debt structure"
+    },
+    "tax": {
+        "corporate_tax_rate": 0.30,
+        "gst_rate": 0.10,
+        "gst_refund_delay_months": 1,
+        "depreciation_method": "SL + reducing_balance",
+        "depreciation_note": "Straight-line for some assets, reducing balance for others (ITAA 1997)",
+        "_source": "UC model Tax tab",
+        "_confidence": "green"
+    }
 }
