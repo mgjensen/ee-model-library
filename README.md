@@ -2,7 +2,7 @@
 
 Python module library for renewable energy project finance — European Energy A/S.
 
-**Status:** v1.x — 38 modules, 3 technologies (PV, BESS, WIND), 5 markets (DK, DE, AU, SE, PL), 1131 tests
+**Status:** v1.x — 38 calculation modules, 3 technologies (PV, BESS, WIND), 5 markets (DK, DE, AU, SE, PL), 1131 tests
 
 ---
 
