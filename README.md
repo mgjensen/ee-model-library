@@ -2,7 +2,7 @@
 
 Python module library for renewable energy project finance — European Energy A/S.
 
-**Status:** v1.0 — 14 modules, 3 technologies (PV, BESS, WIND), 5 markets (DK, DE, AU, SE, PL)
+**Status:** v1.x — 38 modules, 3 technologies (PV, BESS, WIND), 5 markets (DK, DE, AU, SE, PL), 1131 tests
 
 ---
 
@@ -12,14 +12,14 @@ Three-layer system:
 
 ```
 FRONTEND  (Claude Project — EE Model Builder)
-    ↕  JSON / .xlsx
+    |  JSON / .xlsx
 INTELLIGENCE  (Claude + system prompt)
-    ↕  HTTP POST /run
+    |  HTTP POST /run
 BACKEND  (this repo — ee-model-library)
-    └── assembly/engine.py → excel_writer.py → .xlsx workbook
+    +-- assembly/engine.py -> excel_writer.py -> excel_formatter.py -> .xlsx
 ```
 
-The Claude-based EE Model Builder sends a `ProjectConfig` JSON payload to the API, which runs all enabled modules in dependency order and returns a fully populated `.xlsx` workbook.
+The assembly engine runs all enabled modules in dependency order and produces a bank-grade `.xlsx` workbook with 7 sheets, EE/F1F9 formatting standard, and perspective-aware Cover sheet.
 
 ---
 
@@ -27,48 +27,77 @@ The Claude-based EE Model Builder sends a `ProjectConfig` JSON payload to the AP
 
 ```
 ee-model-library/
-  api/                    FastAPI app (POST /run, GET /modules, GET /health)
+  api/                        FastAPI app (POST /run, GET /modules, GET /health)
   assembly/
-    engine.py             Orchestration — runs modules in dependency order
-    cell_mapper.py        Row/column layout for the 5-sheet workbook
-    excel_writer.py       openpyxl writer — produces the .xlsx output
-    parser.py             .xlsx assumption reader (named ranges + Assumptions sheet)
+    engine.py                 Orchestration — runs 38 modules in dependency order
+    cell_mapper.py            Row/column layout, column constants, SUBSECTION_LABELS
+    excel_writer.py           openpyxl writer — 7-sheet .xlsx with formula layer
+    excel_formatter.py        EE/F1F9 format standard (colors, borders, grouping, print)
+    cover_writer.py           Cover sheet — Bank/IC/Audit perspective KPI blocks
+    parser.py                 .xlsx assumption reader (named ranges + vendor models)
+    scenario_runner.py        Multi-scenario runner + portfolio aggregation
+    scenario_engine.py        Sensitivity engine + tornado charts
   modules/
-    core/                 WACC_001 — cost of capital
-    revenue/              REV_001 (PV), REV_002 (BESS), REV_003 (WIND)
-    costs/                OPEX_001 (PV), OPEX_002 (BESS), OPEX_003 (WIND)
-    capex/                CAPEX_001 — capital expenditure schedule
-    debt/                 DEBT_001 — senior debt schedule
-    tax/                  TAX_001 — Danish corporate tax
-    statements/           PL_001, CF_001, BS_001, IRR_001
+    core/                     WACC_001
+    market/                   PRICE_CURVES_001
+    revenue/                  REV_001 (PV), REV_002 (BESS), REV_003 (WIND), PPA_CFD_001
+    costs/                    OPEX_001-003, DECOM_PROVISION_001, IMBALANCE_FEE_001
+    capex/                    CAPEX_001, BESS_REPOW_001
+    debt/                     DEBT_001, DEBT_SCULPT_001, DEBT_LINEAR_001, DEBT_REFI_001,
+                              CONSTR_FINANCE_001, SHL_001, VAT_FACILITY_001, DSRA_001,
+                              REPOW_DEBT_001, CASH_SWEEP_001, BRIDGE_FACILITY_001, MRA_001
+    tax/                      TAX_001 (DK), TAX_DE_001 (DE), TAX_LT_001 (LT)
+    statements/               PL_001, CF_001, BS_001, IRR_001, WORKING_CAPITAL_001,
+                              SOURCES_USES_001, VALUATION_001, BREAKEVEN_001
+    checks/                   MODEL_CHECKS_001
+    reporting/                DASHBOARD_001
   registry/
-    module_registry.json  Module index (id, version, markets, technologies, path)
-    assumption_db/        Market assumption databases (DK.json, DE.json, AU.json)
-  tests/                  500+ automated tests
-  docs/                   Module guide, assembly guide, changelog
+    module_registry.json      Module index (38 modules, with created/modified dates)
+    assumption_db/            Market assumptions (DK.json, DE.json, AU.json)
+  tests/                      1131 automated tests
+  docs/
+    CLAUDE_MODULES.md         Full module inventory + engine wiring
+    CLAUDE_SCHEMAS.md         ProjectConfig, Excel spec, assumption DB schemas
+  contributions/
+    TEMPLATE.md               Staging template for new module proposals
   requirements.txt
 ```
 
 ---
 
+## Excel Output (7-Sheet Workbook)
+
+| Sheet | Contents |
+|-------|----------|
+| Cover | Project banner, view selector (Bank/IC/Audit), KPI block, color key |
+| Revenue | REV_001, REV_002, REV_003, PPA_CFD_001, PRICE_CURVES_001 |
+| Costs | OPEX_001-003, CAPEX_001, BESS_REPOW_001, DECOM_PROVISION_001, IMBALANCE_FEE_001 |
+| Debt | All DEBT_*, SHL_001, VAT_FACILITY_001, DSRA_001, MRA_001, TAX_*, WACC_001 |
+| FS_Monthly | PL_001, CF_001, BS_001, IRR_001 + working capital, sources/uses, valuation |
+| FS_Annual | Annual aggregation (flows=SUM, stocks=closing balance) |
+| Summary | Scalar KPIs (IRR, NPV, DSCR, WACC) |
+
+**Column layout (EE Standard):** A-D spacers, E label, F constant, G unit, H-I hidden notes/source, J total, K spacer, L+ monthly time series.
+
+**Format standard:** EE/F1F9 hybrid — teal section headers, slate column headers, red export font, blue import font, row grouping, A3 landscape print setup, tab colors by category.
+
+---
+
 ## Module Registry
 
-| ID | Description | Technology | Markets |
-|----|-------------|------------|---------|
-| WACC_001 | Weighted Average Cost of Capital (two-layer PPA/merchant) | * | DK, DE, * |
-| REV_001 | PV Revenue (spot, PPA slots, GoO, tariffs, balancing) | PV | DK, DE, AU, SE, * |
-| REV_002 | BESS Revenue (discharge, charging, import/export tariffs) | BESS | DK, DE, * |
-| REV_003 | Wind Revenue (spot, PPA slots, GoO, tariffs, balancing) | WIND | DK, DE, SE, PL, * |
-| OPEX_001 | PV OPEX (11 components: O&M, land, insurance, VE-bonus…) | PV | DK, DE, AU, SE, * |
-| OPEX_002 | BESS OPEX (O&M, insurance, trading costs, other) | BESS | DK, DE, * |
-| OPEX_003 | Wind OPEX (O&M, land lease, insurance, grid costs, other) | WIND | DK, DE, SE, PL, * |
-| CAPEX_001 | Capital Expenditure (EPC, grid, development, contingency) | * | DK, DE, AU, SE, PL, * |
-| DEBT_001 | Senior Debt Schedule (annuity/straight-line/bullet, DSCR) | * | DK, DE, AU, SE, PL, * |
-| TAX_001 | Danish Corporate Tax (declining balance dep., EBITDA cap) | * | DK |
-| PL_001 | Profit & Loss Statement | * | DK, DE, AU, SE, PL, * |
-| CF_001 | Cash Flow Statement (indirect method) | * | DK, DE, AU, SE, PL, * |
-| BS_001 | Balance Sheet | * | DK, DE, AU, SE, PL, * |
-| IRR_001 | DCF Valuation (project IRR, equity IRR, NPV, payback) | * | DK, DE, AU, SE, PL, * |
+| Category | Modules | Count |
+|----------|---------|-------|
+| Core | WACC_001 | 1 |
+| Market | PRICE_CURVES_001 | 1 |
+| Revenue | REV_001, REV_002, REV_003, PPA_CFD_001 | 4 |
+| Costs | OPEX_001-003, DECOM_PROVISION_001, IMBALANCE_FEE_001 | 5 |
+| CAPEX | CAPEX_001, BESS_REPOW_001 | 2 |
+| Debt | DEBT_001, DEBT_SCULPT_001, DEBT_LINEAR_001, DEBT_REFI_001, CONSTR_FINANCE_001, SHL_001, VAT_FACILITY_001, DSRA_001, REPOW_DEBT_001, CASH_SWEEP_001, BRIDGE_FACILITY_001, MRA_001 | 12 |
+| Tax | TAX_001 (DK), TAX_DE_001 (DE), TAX_LT_001 (LT) | 3 |
+| Statements | PL_001, CF_001, BS_001, IRR_001, WORKING_CAPITAL_001, SOURCES_USES_001, VALUATION_001, BREAKEVEN_001 | 8 |
+| Checks | MODEL_CHECKS_001 | 1 |
+| Reporting | DASHBOARD_001 | 1 |
+| **Total** | | **38** |
 
 ---
 
