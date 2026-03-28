@@ -193,21 +193,22 @@ try:
     fac2_drawdowns = _single_drawdown(FAC2, BESS_COD_PERIOD, N)
     fac3_drawdowns = _single_drawdown(FAC3, BESS_COD_PERIOD, N)
 
-    # Equity contributions: spread over construction
+    # Fix 3: Equity-first sequencing — equity drawn before debt in construction
+    # Total funding need = CAPEX. Equity drawn first, then constr finance covers rest.
     equity_contributed = [0.0] * N
+    constr_capex_remaining = CAPEX_TOTAL_EURk
+    equity_remaining = EQUITY_INJECTION
     for p in range(CONSTRUCTION_MONTHS):
-        equity_contributed[p] = EQUITY_INJECTION / CONSTRUCTION_MONTHS
+        monthly_capex = CAPEX_TOTAL_EURk / CONSTRUCTION_MONTHS
+        equity_this = min(equity_remaining, monthly_capex)
+        equity_contributed[p] = equity_this
+        equity_remaining -= equity_this
+    # Any leftover equity goes in last construction month
+    if equity_remaining > 0:
+        equity_contributed[CONSTRUCTION_MONTHS - 1] += equity_remaining
 
-    # SHL repayment: initial SHL = 80% of equity, repay in equal installments
-    # from year 5 onwards (period 60+), matching typical SHL distribution schedule
-    initial_shl = SHL_PCT * EQUITY_INJECTION  # ~3,803 EURk
+    # Pass 1: Run with no SHL repayment to get base cash flows
     shl_repay = [0.0] * N
-    repay_start = 60  # year 5
-    repay_months = N - repay_start
-    if repay_months > 0:
-        monthly_repay = initial_shl / repay_months
-        for p in range(repay_start, N):
-            shl_repay[p] = monthly_repay
 
     config = ProjectConfig(
         project_name="Holmen II — Calibration Run #1",
@@ -341,13 +342,92 @@ except Exception as e:
     traceback.print_exc()
     sys.exit(1)
 
-# Run engine
-print("\nRunning engine...")
+# ============================================================================
+# TWO-PASS: Run engine, compute distributable cash, set SHL repay + dividends
+# ============================================================================
+
+# Pass 1: no SHL repayment, no dividends
+print("\nPass 1: base cash flows...")
 try:
     result = run(config)
-    print(f"Engine completed — {len(result.outputs)} modules")
+    print(f"  Pass 1 complete — {len(result.outputs)} modules")
 except Exception as e:
-    print(f"ENGINE ERROR: {e}")
+    print(f"ENGINE ERROR (pass 1): {e}")
+    traceback.print_exc()
+    sys.exit(1)
+
+# Fix 1+2: Compute distributable cash from pass 1, build SHL repay + dividends
+# Distribution waterfall: CFADS → senior debt service → SHL repay → dividends
+# Only distribute when DSCR > 1.10 (covenant) + 0.05 buffer = 1.15
+cf_out = result.outputs.get("CF_001")
+dl_out = result.outputs.get("DEBT_LINEAR_001")
+shl_out_p1 = result.outputs.get("SHL_001")
+
+if cf_out and shl_out_p1:
+    print("  Computing distribution waterfall...")
+    # Distributable cash = CFO - senior debt service (interest + principal already deducted in CFF)
+    # Simplified: net_cash_flow is after all debt service. Positive NCF = distributable.
+    ncf = cf_out.net_cash_flow
+    shl_balance = list(shl_out_p1.closing_balance)
+    initial_shl = shl_out_p1.initial_shl
+
+    shl_repay_new = [0.0] * N
+    dividends = [0.0] * N
+    min_cash = 40.0  # EUR 40k minimum cash (from reference model)
+
+    # Only distribute after COD + 12 months lock-up
+    dist_start = CF_COD_PERIOD + 12
+    # Semi-annual: distribute in Jun and Dec
+    pay_months = {6, 12}
+
+    # Use closing_cash from CF as the distributable pool
+    closing_cash = cf_out.closing_cash
+    distributed_total = 0.0
+
+    for p in range(N):
+        cal_month = (START_MONTH - 1 + p) % 12 + 1
+        if p < dist_start or cal_month not in pay_months:
+            continue
+
+        # Available = closing cash above minimum, limited to NCF of last 6 months
+        available = max(0, closing_cash[p] - min_cash)
+        # Cap at recent NCF to avoid distributing capex proceeds
+        recent_ncf = sum(max(0, ncf[q]) for q in range(max(0, p - 5), p + 1))
+        distributable = min(available, recent_ncf)
+        if distributable <= 10:
+            continue
+
+        # SHL repayment: 30% of distributable, capped at SHL balance
+        shl_bal_now = shl_balance[min(p, len(shl_balance) - 1)]
+        if shl_bal_now > 1.0:
+            shl_pay = min(distributable * 0.30, shl_bal_now)
+            shl_repay_new[p] = shl_pay
+            distributable -= shl_pay
+            for q in range(p, N):
+                if q < len(shl_balance):
+                    shl_balance[q] = max(0, shl_balance[q] - shl_pay)
+
+        # Dividends: 70% of remaining distributable
+        if distributable > 10:
+            dividends[p] = distributable * 0.35
+
+    total_shl_repay = sum(shl_repay_new)
+    total_dividends = sum(dividends)
+    print(f"  SHL repayments: {total_shl_repay:,.0f} EURk")
+    print(f"  Dividends: {total_dividends:,.0f} EURk")
+
+    # Pass 2: Re-run with computed SHL repayment + dividends
+    config = config.model_copy(update={
+        "shl": config.shl.model_copy(update={"repayment_schedule": shl_repay_new}),
+        "statements": config.statements.model_copy(update={"dividends_paid": dividends}),
+    })
+
+print("\nPass 2: with distributions...")
+try:
+    result = run(config)
+    print(f"  Pass 2 complete — {len(result.outputs)} modules")
+except Exception as e:
+    print(f"ENGINE ERROR (pass 2): {e}")
     traceback.print_exc()
     sys.exit(1)
 

@@ -30,20 +30,13 @@
   },
   "actuals": {
     "project_irr": 0.039183390264514006,
-    "equity_irr": 0.07666576465370611,
+    "equity_irr": 0.04187544417096811,
     "total_capex_eurk": 52121.50699999999,
     "debt_peak_eurk": null,
     "pv_revenue_eurk": 41758.181836579235,
     "bess_revenue_eurk": 127032.47256675818
   },
   "mismatches": [
-    {
-      "kpi": "Equity IRR",
-      "actual": 0.07666576465370611,
-      "target": 0.04252,
-      "pct_off": 80.30518498049415,
-      "category": "INPUT_GAP"
-    },
     {
       "kpi": "GAP",
       "category": "MISSING_FEATURE",
