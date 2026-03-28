@@ -58,6 +58,18 @@ class DSCRStream(BaseModel):
     )
 
 
+class ConstraintScenario(BaseModel):
+    """A single constraint scenario for multi-constraint sculpting.
+
+    Each scenario has its own DSCRStreams (with their own CFADS and targets).
+    The final amortisation is the element-wise minimum across all scenarios.
+    """
+    name: str = Field(..., description="e.g. 'P50', 'P99', 'breakeven'")
+    dscr_streams: list[DSCRStream] = Field(
+        ..., description="Per-stream DSCR targets and CFADS for this scenario"
+    )
+
+
 # ============================================================================
 # INPUTS & OUTPUTS
 # ============================================================================
@@ -118,6 +130,11 @@ class Inputs(BaseModel):
     # DSCR covenant
     dscr_covenant: float = Field(1.10, gt=0)
 
+    # Multi-constraint sculpting (optional — UC model pattern)
+    constraint_scenarios: Optional[list[ConstraintScenario]] = Field(
+        None, description="Multiple constraint scenarios. Final principal = min across all."
+    )
+
     @model_validator(mode="after")
     def _validate(self) -> Self:
         n = self.periods
@@ -133,6 +150,14 @@ class Inputs(BaseModel):
         for m in self.payment_months:
             if m < 1 or m > 12:
                 raise ValueError(f"payment_months must be 1-12, got {m}")
+        if self.constraint_scenarios is not None:
+            for ci, cs in enumerate(self.constraint_scenarios):
+                for si, s in enumerate(cs.dscr_streams):
+                    if len(s.cfads) != n:
+                        raise ValueError(
+                            f"constraint_scenarios[{ci}].dscr_streams[{si}].cfads "
+                            f"length {len(s.cfads)} != periods {n}"
+                        )
         return self
 
 
@@ -173,6 +198,10 @@ class Outputs(BaseModel):
     llcr: float                # Loan Life Coverage Ratio at COD
     min_llcr: float            # minimum LLCR during repayment
     covenant_breached: bool
+
+    # Multi-constraint outputs (empty if single-pass)
+    binding_constraint: list[str]     # constraint name that was binding at each period
+    per_constraint_dscr: dict[str, list[float]]  # per-scenario DSCR series
 
 
 # ============================================================================
@@ -366,6 +395,110 @@ def _run_sculpted(
             principal, closing, blended_monthly, dscr_monthly, ds, balance)
 
 
+def _forward_pass_with_principal(
+    facility: float,
+    inputs: Inputs,
+    fixed_principal: list[float],
+    sa_groups: list[list[int]],
+    rep_start: int,
+    total_cfads: list[float],
+) -> tuple[list[float], list[float], list[float], list[float],
+           list[float], list[float], list[float], list[float],
+           list[float], float]:
+    """Run a forward balance pass using a pre-determined principal schedule.
+
+    This recomputes interest and balances consistently with the given principal.
+    Returns the same tuple format as _run_sculpted().
+    """
+    n = inputs.periods
+    cep = inputs.construction_end_period
+
+    drawdown = [0.0] * n
+    if cep > 0:
+        monthly_draw = facility / cep
+        for p in range(cep):
+            drawdown[p] = monthly_draw
+    else:
+        drawdown[0] = facility
+
+    opening = [0.0] * n
+    interest_accrued = [0.0] * n
+    interest_paid = [0.0] * n
+    closing = [0.0] * n
+    blended_monthly = [float("nan")] * n
+    dscr_monthly = [float("nan")] * n
+    ds = [0.0] * n
+
+    balance = 0.0
+
+    for sa_months in sa_groups:
+        payment_period_idx = sa_months[-1]
+        is_repayment = rep_start <= payment_period_idx
+
+        blended = _blended_dscr_for_sa(inputs.dscr_streams, sa_months)
+        for p in sa_months:
+            blended_monthly[p] = blended
+
+        sa_interest = 0.0
+        for p in sa_months:
+            opening[p] = balance
+            r = _monthly_rate(p, inputs)
+            interest_accrued[p] = balance * r
+            sa_interest += interest_accrued[p]
+            balance += drawdown[p]
+            closing[p] = balance
+
+        if is_repayment and balance > 1e-9:
+            sa_principal = sum(fixed_principal[p] for p in sa_months)
+            sa_principal = min(sa_principal, balance)
+            pay_p = payment_period_idx
+            interest_paid[pay_p] = sa_interest
+            ds[pay_p] = sa_interest + sa_principal
+            balance -= sa_principal
+            closing[pay_p] = balance
+            # Map the fixed principal back to the payment period
+            # (sculpted puts all principal on last SA month)
+            for p in sa_months:
+                if p == pay_p:
+                    pass  # principal already in fixed_principal[p]
+                # Recalculate achieved DSCR
+            sa_cfads = sum(total_cfads[p] for p in sa_months)
+            actual_ds = sa_interest + sa_principal
+            achieved = sa_cfads / actual_ds if actual_ds > 1e-9 else float("nan")
+            for p in sa_months:
+                dscr_monthly[p] = achieved
+        elif is_repayment:
+            pay_p = payment_period_idx
+            interest_paid[pay_p] = sa_interest
+            ds[pay_p] = sa_interest
+
+    return (opening, drawdown, interest_accrued, interest_paid,
+            fixed_principal, closing, blended_monthly, dscr_monthly, ds, balance)
+
+
+def _run_sculpted_with_streams(
+    facility: float,
+    inputs: Inputs,
+    streams: list[DSCRStream],
+    sa_groups: list[list[int]],
+    rep_start: int,
+    rep_end: int,
+) -> tuple[list[float], list[float], list[float]]:
+    """Run sculpting with custom DSCRStreams (for multi-constraint).
+
+    Returns (principal, dscr_monthly, total_cfads) — only what's needed
+    to compare across constraint scenarios.
+    """
+    n = inputs.periods
+    total_cfads = [sum(s.cfads[p] for s in streams) for p in range(n)]
+    (_, _, _, _, principal, _, _, dscr_monthly, _, _) = _run_sculpted(
+        facility,
+        inputs.model_copy(update={"dscr_streams": streams}),
+        sa_groups, rep_start, rep_end, total_cfads,
+    )
+    return principal, dscr_monthly, total_cfads
+
+
 def _auto_size(
     inputs: Inputs,
     sa_groups: list[list[int]],
@@ -414,11 +547,76 @@ def calculate(inputs: Inputs) -> Outputs:
     # Auto-size facility
     facility = _auto_size(inputs, sa_groups, rep_start, rep_end, total_cfads)
 
-    # Run final schedule
-    (opening, drawdown, interest_accrued, interest_paid,
-     principal, closing, blended_monthly, dscr_monthly, ds, final_bal) = (
-        _run_sculpted(facility, inputs, sa_groups, rep_start, rep_end, total_cfads)
-    )
+    # Multi-constraint sculpting: run parallel passes, take min principal
+    binding = [""] * n
+    per_constraint_dscr: dict[str, list[float]] = {}
+
+    if inputs.constraint_scenarios is not None and len(inputs.constraint_scenarios) > 0:
+        # Bisect to find largest facility where min-principal schedule fully repays
+        leverage_cap = inputs.leverage_cap_pct * inputs.total_capex_DKKk
+
+        def _trial(trial_facility: float) -> float:
+            """Run all constraints at trial_facility, return final balance."""
+            all_p: list[list[float]] = []
+            for cs in inputs.constraint_scenarios:
+                cs_cfads = [sum(s.cfads[p] for s in cs.dscr_streams) for p in range(n)]
+                cs_inp = inputs.model_copy(update={"dscr_streams": cs.dscr_streams})
+                (_, _, _, _, cs_princ, _, _, _, _, _) = _run_sculpted(
+                    trial_facility, cs_inp, sa_groups, rep_start, rep_end, cs_cfads
+                )
+                all_p.append(cs_princ)
+            min_p = [min(all_p[i][p] for i in range(len(all_p))) for p in range(n)]
+            (_, _, _, _, _, _, _, _, _, fb) = _forward_pass_with_principal(
+                trial_facility, inputs, min_p, sa_groups, rep_start, total_cfads
+            )
+            return fb
+
+        # Bisect for facility size
+        lo, hi = 0.0, min(facility, leverage_cap)
+        for _ in range(60):
+            mid = (lo + hi) / 2.0
+            if _trial(mid) < 0.01:
+                lo = mid
+            else:
+                hi = mid
+        facility = lo
+
+        # Final run with sized facility
+        all_principals: list[list[float]] = []
+        constraint_names: list[str] = []
+        for cs in inputs.constraint_scenarios:
+            cs_cfads = [sum(s.cfads[p] for s in cs.dscr_streams) for p in range(n)]
+            cs_inp = inputs.model_copy(update={"dscr_streams": cs.dscr_streams})
+            (_, _, _, _, cs_principal, _, _, cs_dscr, _, _) = _run_sculpted(
+                facility, cs_inp, sa_groups, rep_start, rep_end, cs_cfads
+            )
+            all_principals.append(cs_principal)
+            constraint_names.append(cs.name)
+            per_constraint_dscr[cs.name] = cs_dscr
+
+        # Element-wise minimum principal
+        min_principal = [0.0] * n
+        for p in range(n):
+            vals = [(all_principals[i][p], constraint_names[i])
+                    for i in range(len(all_principals))]
+            min_val = min(v[0] for v in vals)
+            min_principal[p] = min_val
+            binding_names = [v[1] for v in vals if abs(v[0] - min_val) < 1e-6]
+            binding[p] = binding_names[0] if binding_names else ""
+
+        # Forward pass with blended min principal
+        (opening, drawdown, interest_accrued, interest_paid,
+         principal, closing, blended_monthly, dscr_monthly, ds, final_bal) = (
+            _forward_pass_with_principal(
+                facility, inputs, min_principal, sa_groups, rep_start, total_cfads
+            )
+        )
+    else:
+        # Single-pass (current behavior)
+        (opening, drawdown, interest_accrued, interest_paid,
+         principal, closing, blended_monthly, dscr_monthly, ds, final_bal) = (
+            _run_sculpted(facility, inputs, sa_groups, rep_start, rep_end, total_cfads)
+        )
 
     # Cash sweep — mandatory prepayment of excess CFADS
     sweep = [0.0] * n
@@ -525,6 +723,8 @@ def calculate(inputs: Inputs) -> Outputs:
         llcr=llcr_cod,
         min_llcr=min_llcr,
         covenant_breached=covenant_breached,
+        binding_constraint=binding,
+        per_constraint_dscr=per_constraint_dscr,
     )
 
 

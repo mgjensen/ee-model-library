@@ -3,6 +3,7 @@
 import math
 import pytest
 from modules.debt.DEBT_SCULPT_001 import (
+    ConstraintScenario,
     DSCRStream,
     Inputs,
     Outputs,
@@ -735,4 +736,89 @@ class TestDualDSCR:
         )
         out = calculate(inp)
         assert out.fully_repaid
+        assert out.total_debt > 0
+
+
+# ============================================================================
+# MULTI-CONSTRAINT SCULPTING (Session 5 — UC Model Learnings)
+# ============================================================================
+
+def _make_constraint_inputs():
+    """Build inputs with 3 constraint scenarios (P50, P99, breakeven)."""
+    n = 300
+    cfads_p50 = [50.0] * n
+    cfads_p99 = [45.0] * n   # ~90% of P50
+    cfads_break = [40.0] * n  # breakeven flat
+
+    return Inputs(
+        periods=n, start_year=2026, start_month=1,
+        dscr_streams=[  # Primary streams (used for single-pass)
+            DSCRStream(name="pv", target_dscr=1.25, cfads=cfads_p50,
+                      merchant_dscr=1.80, merchant_start_period=180),
+        ],
+        tenor_months=240, payment_months=[6, 12],
+        swap_rate=0.03, hedge_pct=0.80, reference_rate=0.02,
+        margin_rates=[0.020], margin_step_years=[0],
+        leverage_cap_pct=0.80, total_capex_DKKk=100_000.0,
+        construction_end_period=12,
+        constraint_scenarios=[
+            ConstraintScenario(name="P50", dscr_streams=[
+                DSCRStream(name="pv", target_dscr=1.25, cfads=cfads_p50,
+                          merchant_dscr=1.80, merchant_start_period=180),
+            ]),
+            ConstraintScenario(name="P99", dscr_streams=[
+                DSCRStream(name="pv", target_dscr=1.00, cfads=cfads_p99,
+                          merchant_dscr=1.40, merchant_start_period=180),
+            ]),
+            ConstraintScenario(name="breakeven", dscr_streams=[
+                DSCRStream(name="pv", target_dscr=1.00, cfads=cfads_break,
+                          merchant_dscr=1.40, merchant_start_period=180),
+            ]),
+        ],
+    )
+
+
+class TestMultiConstraint:
+    def test_multi_facility_smaller_than_single_pass(self):
+        """Multi-constraint facility < single-pass P50 (tighter constraints)."""
+        inp_multi = _make_constraint_inputs()
+        out_multi = calculate(inp_multi)
+        # Single pass with P50 only
+        inp_single = _make_constraint_inputs()
+        inp_single = inp_single.model_copy(update={"constraint_scenarios": None})
+        out_single = calculate(inp_single)
+        assert out_multi.total_debt < out_single.total_debt, \
+            f"Multi {out_multi.total_debt:.0f} should be < single {out_single.total_debt:.0f}"
+
+    def test_multi_no_constraints_identical(self):
+        """Without constraint_scenarios, behavior identical to single-pass."""
+        inp = _make_constraint_inputs()
+        inp_none = inp.model_copy(update={"constraint_scenarios": None})
+        out_none = calculate(inp_none)
+        assert out_none.binding_constraint == [""] * inp.periods
+        assert out_none.per_constraint_dscr == {}
+
+    def test_multi_binding_constraint_populated(self):
+        """binding_constraint shows which scenario was tightest."""
+        out = calculate(_make_constraint_inputs())
+        non_empty = [b for b in out.binding_constraint if b]
+        assert len(non_empty) > 0
+        assert all(b in ("P50", "P99", "breakeven") for b in non_empty)
+
+    def test_multi_per_constraint_dscr_has_all_scenarios(self):
+        """per_constraint_dscr contains DSCR series for each scenario."""
+        out = calculate(_make_constraint_inputs())
+        assert "P50" in out.per_constraint_dscr
+        assert "P99" in out.per_constraint_dscr
+        assert "breakeven" in out.per_constraint_dscr
+        for name, series in out.per_constraint_dscr.items():
+            assert len(series) == 300
+
+    def test_multi_fully_repaid(self):
+        """Multi-constraint schedule still fully repays."""
+        out = calculate(_make_constraint_inputs())
+        assert out.fully_repaid
+
+    def test_multi_total_debt_positive(self):
+        out = calculate(_make_constraint_inputs())
         assert out.total_debt > 0
