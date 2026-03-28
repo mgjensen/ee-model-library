@@ -63,6 +63,17 @@ class Inputs(BaseModel):
         0.0, description="Retained earnings carried in at start"
     )
 
+    # Retrofit opening balances — for projects with prior operating history
+    opening_fixed_assets_gross_DKKk: float = Field(
+        0.0, description="Gross fixed assets carried in from prior operations (cumulative capex before model start)"
+    )
+    opening_accumulated_depreciation_DKKk: float = Field(
+        0.0, le=0, description="Accumulated depreciation at model start (negative, reducing assets)"
+    )
+    opening_debt_balance_DKKk: float = Field(
+        0.0, description="Debt balance carried in at model start (added to period 0 debt)"
+    )
+
     # From CAPEX_001 — monthly capex spend (DKKk, positive = spend)
     capex_monthly: list[float] = Field(..., description="Monthly capex DKKk")
 
@@ -150,16 +161,16 @@ def calculate(inputs: Inputs) -> Outputs:
 
     contributed = inputs.opening_contributed_equity_DKKk
 
-    # Cumulative capex (fixed assets gross)
+    # Cumulative capex (fixed assets gross), seeded with opening balance
     fa_gross = []
-    cumcapex = 0.0
+    cumcapex = inputs.opening_fixed_assets_gross_DKKk
     for p in range(n):
         cumcapex += inputs.capex_monthly[p]
         fa_gross.append(cumcapex)
 
-    # Cumulative depreciation (negative)
+    # Cumulative depreciation (negative), seeded with opening balance
     acc_dep = []
-    cumdep = 0.0
+    cumdep = inputs.opening_accumulated_depreciation_DKKk  # already negative
     for p in range(n):
         cumdep -= inputs.depreciation_monthly[p]
         acc_dep.append(cumdep)
@@ -169,7 +180,12 @@ def calculate(inputs: Inputs) -> Outputs:
     cash = inputs.closing_cash
     total_assets = [fa_net[p] + cash[p] for p in range(n)]
 
-    debt = inputs.debt_closing_balance
+    # Debt balance: passthrough + optional opening balance offset
+    if inputs.opening_debt_balance_DKKk != 0:
+        debt = [inputs.debt_closing_balance[p] + inputs.opening_debt_balance_DKKk
+                for p in range(n)]
+    else:
+        debt = inputs.debt_closing_balance
 
     # Retained earnings: opening + cumulative(net_income - dividends)
     retained = []

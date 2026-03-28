@@ -294,3 +294,83 @@ def test_get_excel_formulas_keys():
                 "total_liabilities_equity", "imbalance"):
         assert key in formulas
         assert formulas[key].startswith("=")
+
+
+# ============================================================================
+# RETROFIT OPENING BALANCES
+# ============================================================================
+
+def _make_retrofit_inputs(
+    n=24, opening_fa_gross=0.0, opening_acc_dep=0.0, opening_debt=0.0
+):
+    """Build BS inputs with optional retrofit opening balances."""
+    return Inputs(
+        periods=n, start_year=2025, start_month=7,
+        opening_contributed_equity_DKKk=5000.0,
+        opening_retained_earnings_DKKk=170.0,
+        opening_fixed_assets_gross_DKKk=opening_fa_gross,
+        opening_accumulated_depreciation_DKKk=opening_acc_dep,
+        opening_debt_balance_DKKk=opening_debt,
+        capex_monthly=[1000.0] * 6 + [0.0] * 18,
+        depreciation_monthly=[200.0] * n,
+        closing_cash=[500.0] * n,
+        debt_closing_balance=[10000.0] * 12 + [9000.0] * 12,
+        net_income=[100.0] * n,
+    )
+
+
+def test_retrofit_no_opening_matches_default():
+    """Zero opening balances = identical to current behavior."""
+    out_default = calculate(_make_retrofit_inputs())
+    out_zeros = calculate(_make_retrofit_inputs(
+        opening_fa_gross=0.0, opening_acc_dep=0.0, opening_debt=0.0
+    ))
+    assert out_default.fixed_assets_gross == out_zeros.fixed_assets_gross
+    assert out_default.accumulated_depreciation == out_zeros.accumulated_depreciation
+    assert out_default.imbalance == out_zeros.imbalance
+
+
+def test_retrofit_opening_fa_gross_increases_assets():
+    """Opening fixed assets gross adds to cumulative capex."""
+    out_no = calculate(_make_retrofit_inputs())
+    out_yes = calculate(_make_retrofit_inputs(opening_fa_gross=29000.0))
+    # Period 0: with opening = 29000 + 1000 = 30000, without = 1000
+    assert abs(out_yes.fixed_assets_gross[0] - (29000.0 + 1000.0)) < 0.01
+    assert abs(out_no.fixed_assets_gross[0] - 1000.0) < 0.01
+
+
+def test_retrofit_opening_acc_dep_reduces_net_ppe():
+    """Opening accumulated depreciation reduces Net PP&E at period 0."""
+    out_no = calculate(_make_retrofit_inputs())
+    out_yes = calculate(_make_retrofit_inputs(opening_acc_dep=-14600.0))
+    # Net FA = gross + acc_dep (acc_dep is negative)
+    # Without: net = 1000 + (-200) = 800
+    # With: net = 1000 + (-14600 - 200) = -13800
+    assert out_yes.fixed_assets_net[0] < out_no.fixed_assets_net[0]
+    assert abs(out_yes.accumulated_depreciation[0] - (-14600.0 - 200.0)) < 0.01
+
+
+def test_retrofit_opening_balances_reduce_imbalance():
+    """With offsetting opening balances, net FA unchanged and imbalance stable."""
+    out_no = calculate(_make_retrofit_inputs())
+    # Opening gross + opening dep net to zero -- no change to net FA
+    out_yes = calculate(_make_retrofit_inputs(
+        opening_fa_gross=10000.0,
+        opening_acc_dep=-10000.0,
+    ))
+    # Net FA unchanged, so imbalance should be the same
+    assert abs(out_yes.max_imbalance - out_no.max_imbalance) < 1.0
+
+
+def test_retrofit_opening_debt_adds_to_passthrough():
+    """Opening debt balance is added to the debt series."""
+    out_no = calculate(_make_retrofit_inputs())
+    out_yes = calculate(_make_retrofit_inputs(opening_debt=5000.0))
+    assert abs(out_yes.debt_balance[0] - (10000.0 + 5000.0)) < 0.01
+    assert abs(out_no.debt_balance[0] - 10000.0) < 0.01
+
+
+def test_retrofit_validation_acc_dep_must_be_negative():
+    """Accumulated depreciation must be <= 0."""
+    with pytest.raises(Exception):
+        _make_retrofit_inputs(opening_acc_dep=100.0)
