@@ -10,7 +10,7 @@
     "OPEX_002",
     "CAPEX_001",
     "CONSTR_FINANCE_001",
-    "DEBT_001",
+    "DEBT_LINEAR_001",
     "SHL_001",
     "TAX_001",
     "PL_001",
@@ -30,9 +30,9 @@
   },
   "actuals": {
     "project_irr": NaN,
-    "equity_irr": -0.982992316487144,
+    "equity_irr": NaN,
     "total_capex_eurk": 52121.50699999999,
-    "debt_peak_eurk": 31272.904000000006,
+    "debt_peak_eurk": null,
     "pv_revenue_eurk": 99368.78665247637,
     "bess_revenue_eurk": 127877.99999999999
   },
@@ -46,15 +46,10 @@
     },
     {
       "kpi": "Equity IRR",
-      "actual": -0.982992316487144,
+      "actual": NaN,
       "target": 0.04252,
-      "pct_off": 2411.83517518143,
+      "pct_off": null,
       "category": "INPUT_GAP"
-    },
-    {
-      "kpi": "GAP",
-      "category": "MISSING_FEATURE",
-      "detail": "3 linear facilities combined into 1 DEBT_001. Need DEBT_LINEAR_001 multi-facility."
     },
     {
       "kpi": "GAP",

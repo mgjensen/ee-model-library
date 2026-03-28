@@ -30,6 +30,7 @@ import modules.costs.OPEX_001 as OPEX_001
 import modules.costs.OPEX_002 as OPEX_002
 import modules.capex.CAPEX_001 as CAPEX_001
 import modules.debt.DEBT_001 as DEBT_001
+import modules.debt.DEBT_LINEAR_001 as DEBT_LINEAR_001
 import modules.debt.CONSTR_FINANCE_001 as CONSTR_FINANCE_001
 import modules.debt.SHL_001 as SHL_001
 import modules.core.WACC_001 as WACC_001
@@ -155,22 +156,36 @@ try:
     pv_prod = _pv_production(N)
     bess_rev = _bess_revenue(N)
 
-    # Drawdowns: spread senior debt over construction
-    drawdowns = [0.0] * N
-    for p in range(CONSTRUCTION_MONTHS):
-        drawdowns[p] = TOTAL_FACILITY / CONSTRUCTION_MONTHS
-
     # CAPEX monthly schedule for constr finance (even spread over construction)
     capex_monthly = [0.0] * N
     for p in range(CONSTRUCTION_MONTHS):
         capex_monthly[p] = CAPEX_TOTAL_EURk / CONSTRUCTION_MONTHS
 
-    # Equity contributions: equity = CAPEX - senior debt - constr finance
-    # Equity is drawn first in equity-first mode, spread over construction
-    equity_total = EQUITY_INJECTION
+    # Drawdowns for each linear facility: lump at COD period (single drawdown)
+    def _single_drawdown(amount, draw_period, n):
+        d = [0.0] * n
+        d[draw_period] = amount
+        return d
+
+    fac1_drawdowns = _single_drawdown(FAC1, BESS_COD_PERIOD, N)
+    fac2_drawdowns = _single_drawdown(FAC2, BESS_COD_PERIOD, N)
+    fac3_drawdowns = _single_drawdown(FAC3, BESS_COD_PERIOD, N)
+
+    # Equity contributions: spread over construction
     equity_contributed = [0.0] * N
     for p in range(CONSTRUCTION_MONTHS):
-        equity_contributed[p] = equity_total / CONSTRUCTION_MONTHS
+        equity_contributed[p] = EQUITY_INJECTION / CONSTRUCTION_MONTHS
+
+    # SHL repayment: initial SHL = 80% of equity, repay in equal installments
+    # from year 5 onwards (period 60+), matching typical SHL distribution schedule
+    initial_shl = SHL_PCT * EQUITY_INJECTION  # ~3,803 EURk
+    shl_repay = [0.0] * N
+    repay_start = 60  # year 5
+    repay_months = N - repay_start
+    if repay_months > 0:
+        monthly_repay = initial_shl / repay_months
+        for p in range(repay_start, N):
+            shl_repay[p] = monthly_repay
 
     config = ProjectConfig(
         project_name="Holmen II — Calibration Run #1",
@@ -229,14 +244,31 @@ try:
             drawdown_profile=[1.0 / CONSTRUCTION_MONTHS] * CONSTRUCTION_MONTHS,
             epc_DKKk=CAPEX_TOTAL_EURk,  # All CAPEX in one bucket (EURk)
         ),
-        debt=DEBT_001.Inputs(
+        # 3 separate linear facilities via DEBT_LINEAR_001
+        debt_linear=DEBT_LINEAR_001.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
-            facility=TOTAL_FACILITY,
-            all_in_rate=ALL_IN_RATE,
-            repayment_type="straight_line",
-            tenor_months=17 * 12,
-            drawdowns=drawdowns,
-            repayment_start_period=REPAYMENT_START,
+            facilities=[
+                DEBT_LINEAR_001.LinearFacility(
+                    name="Senior Fac 1", facility_DKKk=FAC1,
+                    start_period=BESS_COD_PERIOD, tenor_months=17 * 12,  # 17yr
+                    margin=0.015, swap_rate=0.01568, hedge_pct=1.0,
+                    # swap+margin = 3.068% → swap=1.568%, margin=1.5%, fully hedged
+                    drawdowns=fac1_drawdowns,
+                ),
+                DEBT_LINEAR_001.LinearFacility(
+                    name="Senior Fac 2", facility_DKKk=FAC2,
+                    start_period=BESS_COD_PERIOD, tenor_months=10 * 12,  # 10yr
+                    margin=0.015, swap_rate=0.01568, hedge_pct=1.0,
+                    drawdowns=fac2_drawdowns,
+                ),
+                DEBT_LINEAR_001.LinearFacility(
+                    name="Senior Fac 3", facility_DKKk=FAC3,
+                    start_period=BESS_COD_PERIOD, tenor_months=10 * 12,  # 10yr
+                    margin=0.0275, swap_rate=0.00318, hedge_pct=1.0,
+                    # swap+margin = 3.068% → swap=0.318%, margin=2.75%
+                    drawdowns=fac3_drawdowns,
+                ),
+            ],
         ),
         # Construction finance — bullet facility, repaid at COD
         constr_finance=CONSTR_FINANCE_001.Inputs(
@@ -252,13 +284,14 @@ try:
             arrangement_fee_pct=CF_ARRANGEMENT_FEE,
         ),
 
-        # SHL — 80% of equity at 7.95% PIK
+        # SHL — 80% of equity at 7.95% PIK, with repayment from year 5
         shl=SHL_001.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
             shl_pct_of_equity=SHL_PCT,
             margin=SHL_MARGIN,
             accrued=True,
             equity_contributed=equity_contributed,
+            repayment_schedule=shl_repay,
         ),
 
         tax=TaxConfig(country="DK"),
@@ -331,6 +364,7 @@ opex_pv = out.get("OPEX_001")
 opex_bess = out.get("OPEX_002")
 capex_out = out.get("CAPEX_001")
 debt_out = out.get("DEBT_001")
+debt_lin = out.get("DEBT_LINEAR_001")
 cf_out = out.get("CONSTR_FINANCE_001")
 shl_out = out.get("SHL_001")
 irr_out = out.get("IRR_001")
@@ -342,7 +376,8 @@ if rev_bess: print(f"BESS lifetime revenue: {sum(rev_bess.net_revenue):,.0f} EUR
 if opex_pv: print(f"PV OPEX avg/month:     {sum(opex_pv.total_opex)/N:,.1f} EURk")
 if opex_bess: print(f"BESS OPEX avg/month:   {sum(opex_bess.total_opex)/N:,.1f} EURk")
 if capex_out: print(f"Total CAPEX:           {sum(capex_out.total_capex_monthly):,.1f} EURk")
-if debt_out: print(f"Senior debt peak/final:{max(debt_out.closing_balance):,.1f} / {debt_out.closing_balance[-1]:,.2f} EURk")
+if debt_out: print(f"DEBT_001 peak/final:   {max(debt_out.closing_balance):,.1f} / {debt_out.closing_balance[-1]:,.2f} EURk")
+if debt_lin: print(f"DEBT_LINEAR peak/final:{max(debt_lin.total_closing_balance):,.1f} / {debt_lin.total_closing_balance[-1]:,.2f} EURk")
 if cf_out: print(f"Constr finance peak:   {max(cf_out.closing_balance):,.1f} EURk")
 if shl_out: print(f"SHL peak balance:      {max(shl_out.closing_balance):,.1f} EURk")
 if irr_out: print(f"Project IRR:           {irr_out.project_irr:.2%}")
@@ -359,15 +394,17 @@ if irr_out:
 if capex_out:
     compare("Total CAPEX (EURk)", sum(capex_out.total_capex_monthly),
             TARGETS["Total CAPEX (EURk)"], tol=5, cat="APPROXIMATION")
-if debt_out:
-    compare("Debt peak (EURk)", max(debt_out.closing_balance),
-            TARGETS["Senior debt ops (EURk)"], tol=50, cat="MISSING_FEATURE")
-    compare("Debt repaid", 1.0 if debt_out.closing_balance[-1] < 1.0 else 0.0,
+senior_debt = debt_lin or debt_out
+if senior_debt:
+    bal = senior_debt.total_closing_balance if debt_lin else senior_debt.closing_balance
+    compare("Senior debt peak (EURk)", max(bal),
+            TARGETS["Senior debt ops (EURk)"], tol=50, cat="APPROXIMATION")
+    compare("Debt repaid", 1.0 if bal[-1] < 1.0 else 0.0,
             1.0, tol=0, cat="MODULE_BUG")
 
 # Known gaps
 gaps = [
-    ("MISSING_FEATURE", "3 linear facilities combined into 1 DEBT_001. Need DEBT_LINEAR_001 multi-facility."),
+    # FIXED: 3 linear facilities now use DEBT_LINEAR_001 with separate tenors/margins
     ("MISSING_FEATURE", "No VAT facility (VAT_FACILITY_001 not wired)."),
     # FIXED: BS_001 now accepts opening_fixed_assets_gross and opening_accumulated_depreciation
     ("APPROXIMATION", "BESS revenue flat EUR 355k/month. Real = Aurora tech model curves."),

@@ -679,6 +679,7 @@ def run(config: ProjectConfig) -> AssemblyResult:
                 out["DEBT_REFI_001"].closing_balance if "DEBT_REFI_001" in out else None,
                 out["DEBT_LINEAR_001"].total_closing_balance if "DEBT_LINEAR_001" in out else None,
                 out["CONSTR_FINANCE_001"].closing_balance if "CONSTR_FINANCE_001" in out else None,
+                out["SHL_001"].closing_balance if "SHL_001" in out else None,
                 n=n,
             ),
             net_income=pl_out.net_income,
