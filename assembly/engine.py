@@ -571,17 +571,19 @@ def run(config: ProjectConfig) -> AssemblyResult:
         linear_out = out.get("DEBT_LINEAR_001")
         if linear_out:
             interest = [interest[p] + linear_out.total_interest[p] for p in range(n)]
-        # Add construction finance interest
+        # IDC split: pre-COD interest is capitalised, post-COD is expensed in PL
+        _cod = (config.constr_finance.cod_period if config.constr_finance
+                else (config.capex.construction_start_period + config.capex.construction_periods
+                      if config.capex else 0))
+
+        # Construction finance interest — post-COD only in PL
         constr_out = out.get("CONSTR_FINANCE_001")
         if constr_out:
-            interest = [interest[p] + constr_out.interest[p] for p in range(n)]
-        # Add SHL interest — post-COD only (pre-COD interest is capitalised as IDC)
+            interest = [interest[p] + (constr_out.interest[p] if p >= _cod else 0.0)
+                        for p in range(n)]
+        # SHL interest — post-COD only in PL (pre-COD capitalised as IDC)
         shl_out = out.get("SHL_001")
         if shl_out:
-            # Determine COD period for IDC split
-            _cod = (config.constr_finance.cod_period if config.constr_finance
-                    else (config.capex.construction_start_period + config.capex.construction_periods
-                          if config.capex else 0))
             interest = [interest[p] + (shl_out.interest[p] if p >= _cod else 0.0)
                         for p in range(n)]
         tax_charge = tax_out.tax_charge_accrued if tax_out else (
@@ -637,8 +639,7 @@ def run(config: ProjectConfig) -> AssemblyResult:
             cf_princ = _add_series(cf_princ or None, constr_out.repayment, n=n)
             cf_int = [cf_int[p] + constr_out.interest[p] for p in range(n)]
 
-        # SHL wiring into CF: only post-COD PIK interest is added back
-        # (pre-COD interest was capitalised, not in PL, so no add-back needed)
+        # SHL wiring into CF
         shl_out = out.get("SHL_001")
         if shl_out:
             _cod = (config.constr_finance.cod_period if config.constr_finance
@@ -650,6 +651,15 @@ def run(config: ProjectConfig) -> AssemblyResult:
                 for p in range(n)
             ]
             cf_dep = [cf_dep[p] + shl_pik[p] for p in range(n)]
+            # SHL drawdowns: opening balance at each period minus previous closing
+            # represents new equity-funded SHL disbursements
+            shl_draw = [0.0] * n
+            shl_draw[0] = shl_out.opening_balance[0]  # initial sizing appears at P0
+            for p in range(1, n):
+                new_shl = shl_out.opening_balance[p] - shl_out.closing_balance[p - 1]
+                if new_shl > 0.001:
+                    shl_draw[p] = new_shl
+            cf_draw = _add_series(cf_draw or None, shl_draw, n=n)
             # Cash interest (0 for PIK mode) flows through CFF interest_paid
             cf_int = [cf_int[p] + shl_out.interest_cash[p] for p in range(n)]
             # SHL repayments flow through CFF principal
@@ -688,13 +698,19 @@ def run(config: ProjectConfig) -> AssemblyResult:
         if repow_out:
             bs_capex = [bs_capex[p] + repow_out.repowering_cost_monthly[p] for p in range(n)]
             bs_dep = [bs_dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
-        # Capitalise pre-COD SHL interest as IDC (interest during construction)
+        # Capitalise pre-COD interest as IDC (interest during construction)
+        _cod = (config.constr_finance.cod_period if config.constr_finance
+                else (config.capex.construction_start_period + config.capex.construction_periods
+                      if config.capex else 0))
+        # SHL pre-COD interest → capitalised
         shl_out = out.get("SHL_001")
         if shl_out:
-            _cod = (config.constr_finance.cod_period if config.constr_finance
-                    else (config.capex.construction_start_period + config.capex.construction_periods
-                          if config.capex else 0))
             bs_capex = [bs_capex[p] + (shl_out.interest[p] if p < _cod else 0.0)
+                        for p in range(n)]
+        # Construction finance pre-COD interest → capitalised
+        constr_out = out.get("CONSTR_FINANCE_001")
+        if constr_out:
+            bs_capex = [bs_capex[p] + (constr_out.interest[p] if p < _cod else 0.0)
                         for p in range(n)]
 
         bs_kwargs: dict = dict(

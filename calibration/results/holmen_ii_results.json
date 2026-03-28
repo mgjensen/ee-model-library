@@ -29,8 +29,8 @@
     "Payback (years)": 17.833
   },
   "actuals": {
-    "project_irr": 0.10589208941901496,
-    "equity_irr": 0.164103628591719,
+    "project_irr": 0.10716107768490946,
+    "equity_irr": 0.20547983794894553,
     "total_capex_eurk": 52121.50699999999,
     "debt_peak_eurk": null,
     "pv_revenue_eurk": 99368.78665247637,
@@ -39,16 +39,16 @@
   "mismatches": [
     {
       "kpi": "Project IRR",
-      "actual": 0.10589208941901496,
+      "actual": 0.10716107768490946,
       "target": 0.03967,
-      "pct_off": 166.9324159793672,
+      "pct_off": 170.13127724958272,
       "category": "INPUT_GAP"
     },
     {
       "kpi": "Equity IRR",
-      "actual": 0.164103628591719,
+      "actual": 0.20547983794894553,
       "target": 0.04252,
-      "pct_off": 285.94456395042096,
+      "pct_off": 383.2545577350553,
       "category": "INPUT_GAP"
     },
     {

@@ -98,7 +98,7 @@ OPENING_CASH = 170.643
 # RE = opening net assets - opening equity - opening cash + opening debt
 # ≈ 16,710 - 4,754 + 170 - 0 ≈ 12,127 (approximation)
 # Calibrated to close P0 BS imbalance:
-OPENING_RE = 11_534.0
+OPENING_RE = 12_127.0  # Calibrated to close P0 BS: prior RE + SHL drawdown offset
 EQUITY_INJECTION = 4_753.75
 
 # Retrofit opening balances — PV operating since Feb 2023 (2.4yr before Jul 2025)
