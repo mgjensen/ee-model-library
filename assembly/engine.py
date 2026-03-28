@@ -575,6 +575,10 @@ def run(config: ProjectConfig) -> AssemblyResult:
         constr_out = out.get("CONSTR_FINANCE_001")
         if constr_out:
             interest = [interest[p] + constr_out.interest[p] for p in range(n)]
+        # Add SHL interest (PIK or cash — both are P&L charges)
+        shl_out = out.get("SHL_001")
+        if shl_out:
+            interest = [interest[p] + shl_out.interest[p] for p in range(n)]
         tax_charge = tax_out.tax_charge_accrued if tax_out else (
             tax_de_out.tax_charge_accrued if tax_de_out else _zeros(n)
         )
@@ -627,6 +631,18 @@ def run(config: ProjectConfig) -> AssemblyResult:
             cf_draw = _add_series(cf_draw or None, constr_out.drawdown, n=n)
             cf_princ = _add_series(cf_princ or None, constr_out.repayment, n=n)
             cf_int = [cf_int[p] + constr_out.interest[p] for p in range(n)]
+
+        # SHL wiring into CF: PIK interest is non-cash (add back in CFO),
+        # cash interest + repayments flow through CFF
+        shl_out = out.get("SHL_001")
+        if shl_out:
+            # PIK interest: charged in PL but not paid → add back as non-cash
+            shl_pik = [shl_out.interest[p] - shl_out.interest_cash[p] for p in range(n)]
+            cf_dep = [cf_dep[p] + shl_pik[p] for p in range(n)]
+            # Cash interest (0 for PIK mode) flows through CFF interest_paid
+            cf_int = [cf_int[p] + shl_out.interest_cash[p] for p in range(n)]
+            # SHL repayments flow through CFF principal
+            cf_princ = _add_series(cf_princ or None, shl_out.repayment, n=n)
 
         cf_inputs = CF_001.Inputs(
             periods=n,
