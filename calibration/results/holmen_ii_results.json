@@ -1,0 +1,99 @@
+{
+  "run": "holmen_ii_calibration_01",
+  "date": "2026-03-28",
+  "reference": "251117_DK_BESS_FID_model_v4_38_Sebu_Holmen_II",
+  "modules_run": [
+    "WACC_001",
+    "REV_001",
+    "REV_002",
+    "OPEX_001",
+    "OPEX_002",
+    "CAPEX_001",
+    "DEBT_001",
+    "TAX_001",
+    "PL_001",
+    "CF_001",
+    "BS_001",
+    "IRR_001"
+  ],
+  "targets": {
+    "Project IRR": 0.03967,
+    "Equity IRR": 0.04252,
+    "EV (EURk)": 48518.8,
+    "Total CAPEX (EURk)": 52121.5,
+    "Senior debt ops (EURk)": 59939.7,
+    "Min DSCR (6m)": 2.727,
+    "Min LLCR": 1.977,
+    "Payback (years)": 17.833
+  },
+  "actuals": {
+    "project_irr": NaN,
+    "equity_irr": NaN,
+    "total_capex_eurk": 52121.50699999999,
+    "debt_peak_eurk": 31272.904000000006,
+    "pv_revenue_eurk": 99368.78665247637,
+    "bess_revenue_eurk": 127877.99999999999
+  },
+  "mismatches": [
+    {
+      "kpi": "Project IRR",
+      "actual": NaN,
+      "target": 0.03967,
+      "pct_off": null,
+      "category": "INPUT_GAP"
+    },
+    {
+      "kpi": "Equity IRR",
+      "actual": NaN,
+      "target": 0.04252,
+      "pct_off": null,
+      "category": "INPUT_GAP"
+    },
+    {
+      "kpi": "GAP",
+      "category": "MISSING_FEATURE",
+      "detail": "3 linear facilities combined into 1 DEBT_001. Need DEBT_LINEAR_001 multi-facility."
+    },
+    {
+      "kpi": "GAP",
+      "category": "MISSING_FEATURE",
+      "detail": "No construction finance (CONSTR_FINANCE_001). Missing IDC."
+    },
+    {
+      "kpi": "GAP",
+      "category": "MISSING_FEATURE",
+      "detail": "No SHL (EUR 18.6m at 7.95% PIK)."
+    },
+    {
+      "kpi": "GAP",
+      "category": "MISSING_FEATURE",
+      "detail": "No VAT facility."
+    },
+    {
+      "kpi": "GAP",
+      "category": "APPROXIMATION",
+      "detail": "BESS revenue flat EUR 355k/month. Real = Aurora tech model curves."
+    },
+    {
+      "kpi": "GAP",
+      "category": "APPROXIMATION",
+      "detail": "PV capture price flat EUR 48/MWh. Real = Aurora modified curves."
+    },
+    {
+      "kpi": "GAP",
+      "category": "APPROXIMATION",
+      "detail": "PV/BESS OPEX lumped into 4 buckets (reference has 15+ line items)."
+    },
+    {
+      "kpi": "GAP",
+      "category": "INPUT_GAP",
+      "detail": "Currency EUR but field names say DKKk. No FX conversion."
+    },
+    {
+      "kpi": "GAP",
+      "category": "INPUT_GAP",
+      "detail": "Opening BS incomplete (no accumulated depreciation)."
+    }
+  ],
+  "warnings": []
+}
