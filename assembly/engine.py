@@ -129,6 +129,17 @@ class StatementConfig(BaseModel):
         description="Monthly dividends paid DKKk (optional)"
     )
 
+    # Retrofit opening balances for BS_001 (projects with prior operating history)
+    opening_fixed_assets_gross_DKKk: float = Field(
+        0.0, description="Gross fixed assets at model start from prior operations"
+    )
+    opening_accumulated_depreciation_DKKk: float = Field(
+        0.0, le=0, description="Accumulated depreciation at model start (negative)"
+    )
+    opening_debt_balance_DKKk: float = Field(
+        0.0, description="Debt balance carried in at model start"
+    )
+
 
 class ProjectConfig(BaseModel):
     """
@@ -657,6 +668,9 @@ def run(config: ProjectConfig) -> AssemblyResult:
             start_month=tl.start_month,
             opening_contributed_equity_DKKk=sc.opening_contributed_equity_DKKk,
             opening_retained_earnings_DKKk=sc.opening_retained_earnings_DKKk,
+            opening_fixed_assets_gross_DKKk=sc.opening_fixed_assets_gross_DKKk,
+            opening_accumulated_depreciation_DKKk=sc.opening_accumulated_depreciation_DKKk,
+            opening_debt_balance_DKKk=sc.opening_debt_balance_DKKk,
             capex_monthly=bs_capex,
             depreciation_monthly=bs_dep,
             closing_cash=cf_out.closing_cash,

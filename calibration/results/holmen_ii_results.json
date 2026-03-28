@@ -63,11 +63,6 @@
     },
     {
       "kpi": "GAP",
-      "category": "MISSING_FEATURE",
-      "detail": "BS_001 cannot accept opening accumulated_depreciation or fixed_assets_gross. PV has 2.4yr prior ops -- ~EUR 14.6m acc dep missing from opening BS."
-    },
-    {
-      "kpi": "GAP",
       "category": "APPROXIMATION",
       "detail": "BESS revenue flat EUR 355k/month. Real = Aurora tech model curves."
     },

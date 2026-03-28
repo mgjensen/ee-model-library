@@ -94,10 +94,12 @@ SHL_MARGIN = 0.0795                       # 7.95% PIK
 OPENING_CASH = 170.643
 OPENING_RE = 170.643
 EQUITY_INJECTION = 4_753.75
-# GAP: MISSING_FEATURE — BS_001 does not accept opening accumulated_depreciation
-# or opening fixed_assets_gross. The PV has 2.4 years of prior depreciation
-# (~EUR 29,170k asset * 25% declining * 2.4yr ≈ EUR 14,600k acc dep).
-# This will cause BS imbalance until BS_001 is extended.
+
+# Retrofit opening balances — PV operating since Feb 2023 (2.4yr before Jul 2025)
+# Fixed assets (investment basis): EUR 29,170k
+# 25% declining balance for 2.4 years: acc_dep = 29170 * (1 - 0.75^2.4) ≈ 12,460
+OPENING_FA_GROSS = 29_170.0    # EURk — PV fixed assets at COD
+OPENING_ACC_DEP = -12_460.0    # EURk — 2.4yr of 25% declining balance (negative)
 
 # Equity discount rate
 EQUITY_DR = 0.069
@@ -265,6 +267,8 @@ try:
             opening_contributed_equity_DKKk=EQUITY_INJECTION,
             opening_retained_earnings_DKKk=OPENING_RE,
             equity_discount_rate=EQUITY_DR,
+            opening_fixed_assets_gross_DKKk=OPENING_FA_GROSS,
+            opening_accumulated_depreciation_DKKk=OPENING_ACC_DEP,
         ),
     )
     print("ProjectConfig built")
@@ -365,8 +369,7 @@ if debt_out:
 gaps = [
     ("MISSING_FEATURE", "3 linear facilities combined into 1 DEBT_001. Need DEBT_LINEAR_001 multi-facility."),
     ("MISSING_FEATURE", "No VAT facility (VAT_FACILITY_001 not wired)."),
-    ("MISSING_FEATURE", "BS_001 cannot accept opening accumulated_depreciation or fixed_assets_gross. "
-     "PV has 2.4yr prior ops -- ~EUR 14.6m acc dep missing from opening BS."),
+    # FIXED: BS_001 now accepts opening_fixed_assets_gross and opening_accumulated_depreciation
     ("APPROXIMATION", "BESS revenue flat EUR 355k/month. Real = Aurora tech model curves."),
     ("APPROXIMATION", "PV capture price flat EUR 48/MWh. Real = Aurora modified curves."),
     ("APPROXIMATION", "PV/BESS OPEX lumped into 4 buckets (reference has 15+ line items)."),
