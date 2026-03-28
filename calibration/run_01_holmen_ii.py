@@ -93,7 +93,7 @@ SHL_MARGIN = 0.0795                       # 7.95% PIK
 
 # Opening balances (EURk)
 OPENING_CASH = 170.643
-OPENING_RE = 170.643
+OPENING_RE = 170.643   # Cash carried in = retained earnings at model start
 EQUITY_INJECTION = 4_753.75
 
 # Retrofit opening balances — PV operating since Feb 2023 (2.4yr before Jul 2025)
