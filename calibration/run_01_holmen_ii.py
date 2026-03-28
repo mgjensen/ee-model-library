@@ -30,6 +30,8 @@ import modules.costs.OPEX_001 as OPEX_001
 import modules.costs.OPEX_002 as OPEX_002
 import modules.capex.CAPEX_001 as CAPEX_001
 import modules.debt.DEBT_001 as DEBT_001
+import modules.debt.CONSTR_FINANCE_001 as CONSTR_FINANCE_001
+import modules.debt.SHL_001 as SHL_001
 import modules.core.WACC_001 as WACC_001
 
 # ============================================================================
@@ -72,10 +74,30 @@ ALL_IN_RATE = 0.03068
 REPAYMENT_START = 22  # May 2027 (1 period after drawdown at period 21)
 CONSTRUCTION_MONTHS = 9
 
+# Construction finance (bullet facility)
+CF_LTV = 0.55
+CF_FACILITY = CAPEX_TOTAL_EURk * CF_LTV  # 55% of 52,121.5 = ~28,667 EURk
+CF_MARGIN = 0.04                          # 4.0% all-in
+CF_ARRANGEMENT_FEE = 0.0025               # 0.25%
+CF_START_PERIOD = 0                       # Loan starts at model start (Jul 2025)
+CF_COD_PERIOD = CONSTRUCTION_MONTHS       # Bullet repayment at BESS COD (Apr 2026)
+
+# SHL (shareholder loan)
+SHL_PCT = 0.80                            # 80% of total equity+SHL
+SHL_MARGIN = 0.0795                       # 7.95% PIK
+# Total equity = CAPEX - senior debt - constr finance rollover
+# Equity+SHL = CAPEX - senior ops debt ≈ 52,122 - 31,273 = 20,849
+# SHL = 80% of 20,849 ≈ 16,679 (reference: 18,646 — difference due to IDC)
+# We'll let SHL_001 compute from equity_contributed
+
 # Opening balances (EURk)
 OPENING_CASH = 170.643
 OPENING_RE = 170.643
 EQUITY_INJECTION = 4_753.75
+# GAP: MISSING_FEATURE — BS_001 does not accept opening accumulated_depreciation
+# or opening fixed_assets_gross. The PV has 2.4 years of prior depreciation
+# (~EUR 29,170k asset * 25% declining * 2.4yr ≈ EUR 14,600k acc dep).
+# This will cause BS imbalance until BS_001 is extended.
 
 # Equity discount rate
 EQUITY_DR = 0.069
@@ -131,10 +153,22 @@ try:
     pv_prod = _pv_production(N)
     bess_rev = _bess_revenue(N)
 
-    # Drawdowns: spread over construction
+    # Drawdowns: spread senior debt over construction
     drawdowns = [0.0] * N
     for p in range(CONSTRUCTION_MONTHS):
         drawdowns[p] = TOTAL_FACILITY / CONSTRUCTION_MONTHS
+
+    # CAPEX monthly schedule for constr finance (even spread over construction)
+    capex_monthly = [0.0] * N
+    for p in range(CONSTRUCTION_MONTHS):
+        capex_monthly[p] = CAPEX_TOTAL_EURk / CONSTRUCTION_MONTHS
+
+    # Equity contributions: equity = CAPEX - senior debt - constr finance
+    # Equity is drawn first in equity-first mode, spread over construction
+    equity_total = EQUITY_INJECTION
+    equity_contributed = [0.0] * N
+    for p in range(CONSTRUCTION_MONTHS):
+        equity_contributed[p] = equity_total / CONSTRUCTION_MONTHS
 
     config = ProjectConfig(
         project_name="Holmen II — Calibration Run #1",
@@ -202,6 +236,29 @@ try:
             drawdowns=drawdowns,
             repayment_start_period=REPAYMENT_START,
         ),
+        # Construction finance — bullet facility, repaid at COD
+        constr_finance=CONSTR_FINANCE_001.Inputs(
+            periods=N, start_year=START_YEAR, start_month=START_MONTH,
+            facility_DKKk=CF_FACILITY,
+            construction_start_period=CF_START_PERIOD,
+            cod_period=CF_COD_PERIOD,
+            capex_monthly=capex_monthly,
+            equity_first=True,
+            total_equity_DKKk=EQUITY_INJECTION,
+            base_rate=0.0,           # all-in rate includes base
+            margin=CF_MARGIN,        # 4.0% all-in
+            arrangement_fee_pct=CF_ARRANGEMENT_FEE,
+        ),
+
+        # SHL — 80% of equity at 7.95% PIK
+        shl=SHL_001.Inputs(
+            periods=N, start_year=START_YEAR, start_month=START_MONTH,
+            shl_pct_of_equity=SHL_PCT,
+            margin=SHL_MARGIN,
+            accrued=True,
+            equity_contributed=equity_contributed,
+        ),
+
         tax=TaxConfig(country="DK"),
         statements=StatementConfig(
             opening_cash_DKKk=OPENING_CASH,
@@ -270,6 +327,8 @@ opex_pv = out.get("OPEX_001")
 opex_bess = out.get("OPEX_002")
 capex_out = out.get("CAPEX_001")
 debt_out = out.get("DEBT_001")
+cf_out = out.get("CONSTR_FINANCE_001")
+shl_out = out.get("SHL_001")
 irr_out = out.get("IRR_001")
 bs_out = out.get("BS_001")
 
@@ -279,7 +338,9 @@ if rev_bess: print(f"BESS lifetime revenue: {sum(rev_bess.net_revenue):,.0f} EUR
 if opex_pv: print(f"PV OPEX avg/month:     {sum(opex_pv.total_opex)/N:,.1f} EURk")
 if opex_bess: print(f"BESS OPEX avg/month:   {sum(opex_bess.total_opex)/N:,.1f} EURk")
 if capex_out: print(f"Total CAPEX:           {sum(capex_out.total_capex_monthly):,.1f} EURk")
-if debt_out: print(f"Debt peak/final:       {max(debt_out.closing_balance):,.1f} / {debt_out.closing_balance[-1]:,.2f} EURk")
+if debt_out: print(f"Senior debt peak/final:{max(debt_out.closing_balance):,.1f} / {debt_out.closing_balance[-1]:,.2f} EURk")
+if cf_out: print(f"Constr finance peak:   {max(cf_out.closing_balance):,.1f} EURk")
+if shl_out: print(f"SHL peak balance:      {max(shl_out.closing_balance):,.1f} EURk")
 if irr_out: print(f"Project IRR:           {irr_out.project_irr:.2%}")
 if irr_out: print(f"Equity IRR:            {irr_out.equity_irr:.2%}")
 if bs_out:
@@ -303,14 +364,14 @@ if debt_out:
 # Known gaps
 gaps = [
     ("MISSING_FEATURE", "3 linear facilities combined into 1 DEBT_001. Need DEBT_LINEAR_001 multi-facility."),
-    ("MISSING_FEATURE", "No construction finance (CONSTR_FINANCE_001). Missing IDC."),
-    ("MISSING_FEATURE", "No SHL (EUR 18.6m at 7.95% PIK)."),
-    ("MISSING_FEATURE", "No VAT facility."),
+    ("MISSING_FEATURE", "No VAT facility (VAT_FACILITY_001 not wired)."),
+    ("MISSING_FEATURE", "BS_001 cannot accept opening accumulated_depreciation or fixed_assets_gross. "
+     "PV has 2.4yr prior ops -- ~EUR 14.6m acc dep missing from opening BS."),
     ("APPROXIMATION", "BESS revenue flat EUR 355k/month. Real = Aurora tech model curves."),
     ("APPROXIMATION", "PV capture price flat EUR 48/MWh. Real = Aurora modified curves."),
     ("APPROXIMATION", "PV/BESS OPEX lumped into 4 buckets (reference has 15+ line items)."),
+    ("APPROXIMATION", "Equity contribution spread evenly. Real = equity-first sequencing."),
     ("INPUT_GAP", "Currency EUR but field names say DKKk. No FX conversion."),
-    ("INPUT_GAP", "Opening BS incomplete (no accumulated depreciation)."),
 ]
 
 print("\n--- Known Gaps ---")

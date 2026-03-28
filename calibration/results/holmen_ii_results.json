@@ -9,7 +9,9 @@
     "OPEX_001",
     "OPEX_002",
     "CAPEX_001",
+    "CONSTR_FINANCE_001",
     "DEBT_001",
+    "SHL_001",
     "TAX_001",
     "PL_001",
     "CF_001",
@@ -28,7 +30,7 @@
   },
   "actuals": {
     "project_irr": NaN,
-    "equity_irr": NaN,
+    "equity_irr": -0.982992316487144,
     "total_capex_eurk": 52121.50699999999,
     "debt_peak_eurk": 31272.904000000006,
     "pv_revenue_eurk": 99368.78665247637,
@@ -44,9 +46,9 @@
     },
     {
       "kpi": "Equity IRR",
-      "actual": NaN,
+      "actual": -0.982992316487144,
       "target": 0.04252,
-      "pct_off": null,
+      "pct_off": 2411.83517518143,
       "category": "INPUT_GAP"
     },
     {
@@ -57,17 +59,12 @@
     {
       "kpi": "GAP",
       "category": "MISSING_FEATURE",
-      "detail": "No construction finance (CONSTR_FINANCE_001). Missing IDC."
+      "detail": "No VAT facility (VAT_FACILITY_001 not wired)."
     },
     {
       "kpi": "GAP",
       "category": "MISSING_FEATURE",
-      "detail": "No SHL (EUR 18.6m at 7.95% PIK)."
-    },
-    {
-      "kpi": "GAP",
-      "category": "MISSING_FEATURE",
-      "detail": "No VAT facility."
+      "detail": "BS_001 cannot accept opening accumulated_depreciation or fixed_assets_gross. PV has 2.4yr prior ops -- ~EUR 14.6m acc dep missing from opening BS."
     },
     {
       "kpi": "GAP",
@@ -86,13 +83,13 @@
     },
     {
       "kpi": "GAP",
-      "category": "INPUT_GAP",
-      "detail": "Currency EUR but field names say DKKk. No FX conversion."
+      "category": "APPROXIMATION",
+      "detail": "Equity contribution spread evenly. Real = equity-first sequencing."
     },
     {
       "kpi": "GAP",
       "category": "INPUT_GAP",
-      "detail": "Opening BS incomplete (no accumulated depreciation)."
+      "detail": "Currency EUR but field names say DKKk. No FX conversion."
     }
   ],
   "warnings": []
