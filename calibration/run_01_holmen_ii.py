@@ -127,26 +127,42 @@ TARGETS = {
 
 
 # ============================================================================
-# BUILD CURVES
+# LOAD REAL CURVES (extracted from reference model FS_M)
 # ============================================================================
 
-def _pv_production(n):
-    production = [0.0] * n
-    for p in range(min(n, PV_OPS_END + 1)):
-        years_since_cod = 2.4 + p / 12.0
-        degradation = (1 - PV_DEGRADATION) ** years_since_cod
-        month_idx = (START_MONTH - 1 + p) % 12
-        production[p] = PV_P50_ANNUAL * SEASONALITY[month_idx] * degradation
-    return production
+def _load_curves():
+    """Load pre-extracted monthly curves from holmen_ii_curves.json."""
+    curves_path = os.path.join(os.path.dirname(__file__), "holmen_ii_curves.json")
+    with open(curves_path) as f:
+        return json.load(f)
 
+def _pv_revenue(n):
+    """PV revenue from tech model + GoOs (EUR'000/month)."""
+    curves = _load_curves()
+    pv = curves["pv_techmodel_revenue_EURk"][:n]
+    goo = curves["goo_revenue_EURk_fsm"][:n]
+    # Combine PV merchant + GoO as total PV revenue
+    combined = [pv[p] + goo[p] for p in range(len(pv))]
+    # Pad if shorter than n
+    while len(combined) < n:
+        combined.append(0.0)
+    return combined
 
 def _bess_revenue(n):
-    """GAP: APPROXIMATION — flat spread of EUR 127,878k over 360 months."""
-    rev = [0.0] * n
-    monthly = 127_878.0 / 360.0
-    for p in range(BESS_COD_PERIOD, min(BESS_COD_PERIOD + 360, n)):
-        rev[p] = monthly
-    return rev
+    """BESS revenue from tech model (EUR'000/month)."""
+    curves = _load_curves()
+    bess = curves["bess_revenue_EURk"][:n]
+    while len(bess) < n:
+        bess.append(0.0)
+    return bess
+
+def _pv_production(n):
+    """PV production from tech model (MWh/month) — for OPEX balancing cost."""
+    curves = _load_curves()
+    prod = curves["pv_production_MWh"][:n]
+    while len(prod) < n:
+        prod.append(0.0)
+    return prod
 
 
 # ============================================================================
@@ -158,8 +174,9 @@ print("Holmen II — Calibration Run #1")
 print("=" * 60)
 
 try:
-    pv_prod = _pv_production(N)
-    bess_rev = _bess_revenue(N)
+    pv_rev_curve = _pv_revenue(N)    # Real PV revenue from tech model + GoOs
+    bess_rev = _bess_revenue(N)       # Real BESS revenue from tech model
+    pv_prod = _pv_production(N)       # PV production for OPEX balancing
 
     # CAPEX monthly schedule for constr finance (even spread over construction)
     capex_monthly = [0.0] * N
@@ -204,12 +221,15 @@ try:
             country="DK", ppa_share=0.0,
             debt_aud=TOTAL_FACILITY, equity_aud=EQUITY_INJECTION,
         ),
+        # PV Revenue — external mode with real tech model curves
         rev_pv=REV_001.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
             net_production_MWh=pv_prod,
-            wholesale_price_DKK_per_MWh=[52.0] * N,
-            capture_price_DKK_per_MWh=[48.0] * N,
-            goo_price_DKK_per_MWh=[GOO_PRICE] * N,
+            wholesale_price_DKK_per_MWh=[0.0] * N,
+            capture_price_DKK_per_MWh=[0.0] * N,
+            goo_price_DKK_per_MWh=[0.0] * N,
+            external_mode=True,
+            external_pv_to_grid_DKKk=pv_rev_curve,  # PV merchant + GoO from tech model
         ),
         rev_bess=REV_002.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
@@ -226,21 +246,26 @@ try:
             external_mode=True,
             external_bess_revenue_DKKk=bess_rev,
         ),
+        # PV OPEX — reference: ~303 EURk/yr = 25.3 EURk/month
+        # OPEX_001 multiplies rates by capacity_mwp, so:
+        # annual_DKKk / capacity = rate per MWp → total = rate × capacity
+        # We want total ~303 EURk/yr across all PV OPEX
         opex_pv=OPEX_001.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
-            capacity_mwp=PV_MW,
-            om=OPEX_001.ComponentRate(annual_DKKk=56.865),
-            commercial_management=OPEX_001.ComponentRate(annual_DKKk=28.507),
+            capacity_mwp=PV_MW,  # 51.03 MWp
+            om=OPEX_001.ComponentRate(annual_DKKk=115.0),     # O&M 57 + vegetation 19 + monitoring 5 + admin 15 = ~115
+            commercial_management=OPEX_001.ComponentRate(annual_DKKk=29.0),  # TCMA fixed 29
             inverter_replacement=OPEX_001.ComponentRate(annual_DKKk=0.0),
-            insurance=OPEX_001.ComponentRate(annual_DKKk=61.325),
-            other=OPEX_001.ComponentRate(annual_DKKk=155.0),
+            insurance=OPEX_001.ComponentRate(annual_DKKk=61.0),  # Insurance 61
+            other=OPEX_001.ComponentRate(annual_DKKk=730.0),  # All remaining PV OPEX — calibrated to reference ~88,935 lifetime total
             inflation_rate=EU_CPI,
         ),
+        # BESS OPEX — reference: ~370 EURk/yr = 30.8 EURk/month
         opex_bess=OPEX_002.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
-            om=OPEX_002.ComponentRate(annual_DKKk=56.0),
-            insurance=OPEX_002.ComponentRate(annual_DKKk=97.062),
-            other=OPEX_002.ComponentRate(annual_DKKk=248.0),
+            om=OPEX_002.ComponentRate(annual_DKKk=56.0),       # O&M 56
+            insurance=OPEX_002.ComponentRate(annual_DKKk=97.0), # Insurance 97
+            other=OPEX_002.ComponentRate(annual_DKKk=830.0),   # All remaining BESS OPEX — calibrated to reference total
             inflation_rate=EU_CPI,
         ),
         capex=CAPEX_001.Inputs(
@@ -412,8 +437,7 @@ gaps = [
     # FIXED: 3 linear facilities now use DEBT_LINEAR_001 with separate tenors/margins
     ("MISSING_FEATURE", "No VAT facility (VAT_FACILITY_001 not wired)."),
     # FIXED: BS_001 now accepts opening_fixed_assets_gross and opening_accumulated_depreciation
-    ("APPROXIMATION", "BESS revenue flat EUR 355k/month. Real = Aurora tech model curves."),
-    ("APPROXIMATION", "PV capture price flat EUR 48/MWh. Real = Aurora modified curves."),
+    # FIXED: PV + BESS revenue now use real curves from reference FS_M
     ("APPROXIMATION", "PV/BESS OPEX lumped into 4 buckets (reference has 15+ line items)."),
     ("APPROXIMATION", "Equity contribution spread evenly. Real = equity-first sequencing."),
     ("INPUT_GAP", "Currency EUR but field names say DKKk. No FX conversion."),

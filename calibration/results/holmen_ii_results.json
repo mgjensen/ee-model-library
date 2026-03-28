@@ -29,42 +29,25 @@
     "Payback (years)": 17.833
   },
   "actuals": {
-    "project_irr": 0.10716107768490946,
-    "equity_irr": 0.20547983794894553,
+    "project_irr": 0.039183390264514006,
+    "equity_irr": 0.07666576465370611,
     "total_capex_eurk": 52121.50699999999,
     "debt_peak_eurk": null,
-    "pv_revenue_eurk": 99368.78665247637,
-    "bess_revenue_eurk": 127877.99999999999
+    "pv_revenue_eurk": 41758.181836579235,
+    "bess_revenue_eurk": 127032.47256675818
   },
   "mismatches": [
     {
-      "kpi": "Project IRR",
-      "actual": 0.10716107768490946,
-      "target": 0.03967,
-      "pct_off": 170.13127724958272,
-      "category": "INPUT_GAP"
-    },
-    {
       "kpi": "Equity IRR",
-      "actual": 0.20547983794894553,
+      "actual": 0.07666576465370611,
       "target": 0.04252,
-      "pct_off": 383.2545577350553,
+      "pct_off": 80.30518498049415,
       "category": "INPUT_GAP"
     },
     {
       "kpi": "GAP",
       "category": "MISSING_FEATURE",
       "detail": "No VAT facility (VAT_FACILITY_001 not wired)."
-    },
-    {
-      "kpi": "GAP",
-      "category": "APPROXIMATION",
-      "detail": "BESS revenue flat EUR 355k/month. Real = Aurora tech model curves."
-    },
-    {
-      "kpi": "GAP",
-      "category": "APPROXIMATION",
-      "detail": "PV capture price flat EUR 48/MWh. Real = Aurora modified curves."
     },
     {
       "kpi": "GAP",
