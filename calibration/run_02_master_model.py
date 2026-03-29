@@ -43,6 +43,7 @@ from assembly.engine import (
     ProjectConfig, TimelineConfig, TaxConfig, StatementConfig, run
 )
 from assembly.excel_writer import write_workbook
+from assembly.debt_solver import solve_sculpted_debt
 
 import modules.revenue.REV_001 as REV_001
 import modules.revenue.REV_002 as REV_002
@@ -188,11 +189,10 @@ try:
     goo_price = [GOO_PRICE] * N
 
     # ================================================================
-    # PASS 1: Run WITHOUT sculpted debt to extract CFADS
+    # BUILD BASE CONFIG (without sculpted debt)
     # ================================================================
-    print("\nPass 1: extracting CFADS (no sculpted debt)...")
 
-    config_p1 = ProjectConfig(
+    config_base = ProjectConfig(
         project_name="Master Model v1.0 — Pass 1 (CFADS extraction)",
         market="DK",
         technology="HYBRID",
@@ -285,76 +285,48 @@ try:
         ),
     )
 
-    result_p1 = run(config_p1)
-    print(f"  Pass 1 complete — {len(result_p1.outputs)} modules")
-
-    # Extract CFADS from Pass 1
-    # CFADS = EBITDA - tax - working capital change
-    rev_pv_out = result_p1.outputs.get("REV_001")
-    rev_bess_out = result_p1.outputs.get("REV_002")
-    opex_pv_out = result_p1.outputs.get("OPEX_001")
-    opex_bess_out = result_p1.outputs.get("OPEX_002")
-    tax_out = result_p1.outputs.get("TAX_001")
-
-    gross_rev = [0.0] * N
-    total_opex = [0.0] * N
-    for p in range(N):
-        if rev_pv_out:
-            gross_rev[p] += rev_pv_out.net_revenue[p]
-        if rev_bess_out:
-            gross_rev[p] += rev_bess_out.net_revenue[p]
-        if opex_pv_out:
-            total_opex[p] += opex_pv_out.total_opex[p]
-        if opex_bess_out:
-            total_opex[p] += opex_bess_out.total_opex[p]
-
-    ebitda = [gross_rev[p] - total_opex[p] for p in range(N)]
-    tax_paid = tax_out.tax_paid if tax_out else [0.0] * N
-    cfads = [ebitda[p] - tax_paid[p] for p in range(N)]
-
-    print(f"  CFADS lifetime: {sum(cfads):,.0f} kEUR")
-    print(f"  CFADS avg/month (ops): {sum(cfads[BESS_COD_PERIOD:])/max(1,N-BESS_COD_PERIOD):,.1f} kEUR")
+    # ================================================================
+    # SCULPT TEMPLATE (CFADS will be filled by solver)
+    # ================================================================
+    placeholder_cfads = [0.0] * N
+    sculpt_template = DEBT_SCULPT_001.Inputs(
+        periods=N, start_year=START_YEAR, start_month=START_MONTH,
+        dscr_streams=[
+            DEBT_SCULPT_001.DSCRStream(
+                name="pv_merchant", target_dscr=1.50, cfads=placeholder_cfads,
+            ),
+            DEBT_SCULPT_001.DSCRStream(
+                name="bess_merchant", target_dscr=1.80, cfads=placeholder_cfads,
+            ),
+        ],
+        tenor_months=TENOR_YEARS * 12,
+        grace_period_months=GRACE_MONTHS,
+        payment_months=[6, 12],
+        swap_rate=SWAP_RATE, hedge_pct=HEDGE_PCT, reference_rate=BASE_RATE,
+        margin_rates=[0.016, 0.014, 0.012],
+        margin_step_years=[0, 5, 10],
+        leverage_cap_pct=LEVERAGE_CAP,
+        total_capex_DKKk=CAPEX_TOTAL,
+        construction_end_period=BESS_COD_PERIOD,
+        dscr_covenant=1.10,
+    )
 
     # ================================================================
-    # PASS 2: Run WITH sculpted debt using CFADS from Pass 1
+    # ITERATIVE DEBT SIZING (replaces manual two-pass)
     # ================================================================
-    print("\nPass 2: sculpted debt sizing...")
-
-    config_p2 = config_p1.model_copy(update={
-        "project_name": "Master Model v1.0 — Pass 2 (sculpted)",
-        "debt_sculpt": DEBT_SCULPT_001.Inputs(
-            periods=N, start_year=START_YEAR, start_month=START_MONTH,
-            # Revenue-weighted DSCR: separate PV and BESS streams
-            dscr_streams=[
-                DEBT_SCULPT_001.DSCRStream(
-                    name="pv_merchant",
-                    target_dscr=1.50,
-                    cfads=[max(0, ebitda[p] * 0.4 - tax_paid[p] * 0.4) for p in range(N)],
-                ),
-                DEBT_SCULPT_001.DSCRStream(
-                    name="bess_merchant",
-                    target_dscr=1.80,
-                    cfads=[max(0, ebitda[p] * 0.6 - tax_paid[p] * 0.6) for p in range(N)],
-                ),
-            ],
-            tenor_months=TENOR_YEARS * 12,
-            grace_period_months=GRACE_MONTHS,
-            payment_months=[6, 12],
-            swap_rate=SWAP_RATE,
-            hedge_pct=HEDGE_PCT,
-            reference_rate=BASE_RATE,
-            margin_rates=[0.016, 0.014, 0.012],  # 3-period step-down
-            margin_step_years=[0, 5, 10],          # at COD, year 5, year 10
-            leverage_cap_pct=LEVERAGE_CAP,
-            total_capex_DKKk=CAPEX_TOTAL,
-            construction_end_period=BESS_COD_PERIOD,
-            dscr_covenant=1.10,
-        ),
-    })
-
-    # Pass 2 now includes DIV_001 automatically (engine handles it)
-    result = run(config_p2)
-    print(f"  Pass 2 complete — {len(result.outputs)} modules")
+    print("\nIterative debt sizing solver...")
+    solver_result = solve_sculpted_debt(
+        base_config=config_base,
+        sculpt_template=sculpt_template,
+        tolerance=1.0,
+        max_iterations=10,
+        verbose=True,
+    )
+    result = solver_result.result
+    config_p2 = solver_result.config
+    print(f"  Solver: {solver_result.iterations} iterations, "
+          f"delta={solver_result.final_delta:,.1f}, "
+          f"converged={solver_result.converged}")
 
     div_out = result.outputs.get("DIV_001")
     if div_out:
@@ -392,9 +364,10 @@ shl_out = out.get("SHL_001")
 cf_out = out.get("CONSTR_FINANCE_001")
 capex_out = out.get("CAPEX_001")
 
+rev_pv_out = out.get("REV_001")
+rev_bess_out = out.get("REV_002")
 if rev_pv_out: print(f"PV lifetime revenue:   {sum(rev_pv_out.net_revenue):,.0f} kEUR")
 if rev_bess_out: print(f"BESS lifetime revenue: {sum(rev_bess_out.net_revenue):,.0f} kEUR")
-print(f"CFADS lifetime:        {sum(cfads):,.0f} kEUR")
 if capex_out: print(f"Total CAPEX:           {sum(capex_out.total_capex_monthly):,.1f} kEUR")
 if sculpt_out:
     print(f"Sculpted facility:     {sculpt_out.total_debt:,.1f} kEUR")
@@ -444,7 +417,7 @@ gaps = [
     ("STRUCTURAL", "2. No capital reduction -- equity inflated after ops end"),
     ("STRUCTURAL", "3. No equity-first construction -- CONSTR_FINANCE_001 uses pro-rata"),
     # FIXED: ("STRUCTURAL", "4. No unlevered tax pass") — TAX_001 now computes both
-    ("STRUCTURAL", "5. No full-engine debt sizing iteration -- two-pass workaround"),
+    # FIXED: ("STRUCTURAL", "5. Debt sizing iteration") — debt_solver.py convergence loop
     # FIXED: ("STRUCTURAL", "6. Semi-annual") — DEBT_SCULPT_001 uses payment_months=[6,12]
     # FIXED: ("VALUATION", "7. Buy-and-Sell") — VALUATION_001 v1.1 has sell_down_period + incoming investor IRR
     # FIXED: ("VALUATION", "8. LLCR") — DEBT_SCULPT_001 has llcr_series + min_llcr

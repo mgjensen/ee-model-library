@@ -21,9 +21,9 @@
   "actuals": {
     "project_irr": 0.06077693696294073,
     "equity_irr": 0.14484205434601982,
-    "sculpted_facility": 26063.20346990442,
-    "gearing": 0.5212640693980884,
-    "min_dscr": 1.6799999999999997,
+    "sculpted_facility": 37500.0,
+    "gearing": 0.75,
+    "min_dscr": 1.6499999999999997,
     "bs_max_imbalance": 247.91666666670062
   },
   "gaps": [
@@ -38,22 +38,6 @@
     {
       "category": "STRUCTURAL",
       "description": "3. No equity-first construction -- CONSTR_FINANCE_001 uses pro-rata"
-    },
-    {
-      "category": "STRUCTURAL",
-      "description": "5. No full-engine debt sizing iteration -- two-pass workaround"
-    },
-    {
-      "category": "VALUATION",
-      "description": "7. No Buy-and-Sell valuation / incoming investor IRR"
-    },
-    {
-      "category": "OPERATIONAL",
-      "description": "13. Pre-COD revenue not wired into Sources & Uses"
-    },
-    {
-      "category": "OPERATIONAL",
-      "description": "14. Working capital: single-stream vs 4-stream receivables"
     },
     {
       "category": "COSMETIC",
