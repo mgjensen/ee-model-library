@@ -599,3 +599,42 @@ def test_get_excel_formulas_keys():
                 "taxable_income_gross", "tax_charge"):
         assert key in formulas
         assert formulas[key].startswith("=")
+
+
+# ============================================================================
+# UNLEVERED TAX
+# ============================================================================
+
+def test_unlevered_tax_higher_than_levered():
+    """Unlevered tax >= levered tax (no interest shield)."""
+    from modules.tax.TAX_001 import Inputs, calculate
+    n = 60
+    inp = Inputs(
+        periods=n, start_year=2026, start_month=1,
+        ebitda=[500.0] * n,
+        total_interest=[100.0] * n,  # material interest
+        capex_by_bucket=[[10000.0] + [0.0] * (n-1)] + [[0.0] * n] * 3,
+        country="DK",
+    )
+    out = calculate(inp)
+    lev = sum(out.tax_charge_accrued)
+    unlev = sum(out.unlevered_tax_charge_accrued)
+    assert unlev >= lev - 0.01, f"Unlevered {unlev:.1f} should be >= levered {lev:.1f}"
+    # With 100 DKKk/month interest that's deductible, unlev should be higher
+    # (unless all interest is non-deductible under EBITDA rule)
+
+
+def test_unlevered_tax_length_matches():
+    """Unlevered tax arrays have correct length."""
+    from modules.tax.TAX_001 import Inputs, calculate
+    n = 24
+    inp = Inputs(
+        periods=n, start_year=2026, start_month=1,
+        ebitda=[100.0] * n,
+        total_interest=[10.0] * n,
+        capex_by_bucket=[[5000.0] + [0.0] * (n-1)] + [[0.0] * n] * 3,
+        country="DK",
+    )
+    out = calculate(inp)
+    assert len(out.unlevered_tax_charge_accrued) == n
+    assert len(out.annual_unlevered_tax_charge) > 0

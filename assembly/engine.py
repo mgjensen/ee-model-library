@@ -804,6 +804,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
         sc = config.statements
 
         pfcf = [cf_out.cfo[p] + cf_out.cfi[p] for p in range(n)]
+        # Adjust for unlevered tax: remove interest tax shield from PFCF
+        # PFCF currently uses levered tax (with interest deductions).
+        # Unlevered PFCF should use higher tax (no interest deductions).
+        tax_out_irr = out.get("TAX_001") or out.get("TAX_DE_001")
+        if tax_out_irr and hasattr(tax_out_irr, 'unlevered_tax_charge_accrued'):
+            for p in range(n):
+                tax_shield = tax_out_irr.unlevered_tax_charge_accrued[p] - tax_out_irr.tax_charge_accrued[p]
+                pfcf[p] -= tax_shield  # higher tax → lower PFCF
 
         # Equity cash flow from the equity HOLDER's perspective:
         # ECF = -equity_injection + dividends_received + capital_reduction

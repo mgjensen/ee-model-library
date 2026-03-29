@@ -118,6 +118,10 @@ class Outputs(BaseModel):
     annual_depreciation: list[float]
     annual_non_deductible_interest: list[float]
 
+    # Unlevered tax (no interest deductions — for Project IRR)
+    unlevered_tax_charge_accrued: list[float]  # monthly, no interest benefit
+    annual_unlevered_tax_charge: list[float]
+
     # Totals
     total_tax_paid: float
     total_tax_depreciation: float
@@ -428,10 +432,24 @@ def calculate(inputs: Inputs) -> Outputs:
         if pm["prior"] is not None:
             tax_paid[pm["prior"]] += charge * (1.0 - ytd_frac)
 
+    # Step 3b — Unlevered tax charge (no interest deductions — for Project IRR)
+    # Same as levered but with zero deductible interest
+    n_years = len(annual_ebitda)
+    _, annual_unlev_charge = calculate_tax_charge(
+        annual_ebitda,
+        annual_dep,
+        [0.0] * n_years,  # no interest deduction
+        tax["tax_rate"],
+        tax["inflation_rate"],
+        tax["loss_full_limit_DKKk"],
+        tax["loss_partial_pct"],
+    )
+
     # Monthly spreads
     monthly_ded_int     = _spread_annual_to_monthly(annual_ded_int, yg, inputs.periods)
     monthly_non_ded_int = _spread_annual_to_monthly(annual_non_ded_int, yg, inputs.periods)
     monthly_charge      = _spread_annual_to_monthly(annual_charge, yg, inputs.periods)
+    monthly_unlev       = _spread_annual_to_monthly(annual_unlev_charge, yg, inputs.periods)
 
     return Outputs(
         tax_depreciation=monthly_dep,
@@ -439,6 +457,8 @@ def calculate(inputs: Inputs) -> Outputs:
         non_deductible_interest=monthly_non_ded_int,
         tax_charge_accrued=monthly_charge,
         tax_paid=tax_paid,
+        unlevered_tax_charge_accrued=monthly_unlev,
+        annual_unlevered_tax_charge=annual_unlev_charge,
         annual_taxable_income=annual_taxable,
         annual_tax_charge=annual_charge,
         annual_depreciation=annual_dep,

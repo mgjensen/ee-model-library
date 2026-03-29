@@ -434,7 +434,7 @@ gaps = [
     ("STRUCTURAL", "1. No dividend distribution -- cash accumulates"),
     ("STRUCTURAL", "2. No capital reduction -- equity inflated after ops end"),
     ("STRUCTURAL", "3. No equity-first construction -- CONSTR_FINANCE_001 uses pro-rata"),
-    ("STRUCTURAL", "4. No unlevered tax pass -- Project IRR uses levered tax (~0.3pp overstate)"),
+    # FIXED: ("STRUCTURAL", "4. No unlevered tax pass") — TAX_001 now computes both
     ("STRUCTURAL", "5. No full-engine debt sizing iteration -- two-pass workaround"),
     ("STRUCTURAL", "6. No semi-annual payment frequency -- using monthly equivalent [6,12]"),
     ("VALUATION", "7. No Buy-and-Sell valuation / incoming investor IRR"),
