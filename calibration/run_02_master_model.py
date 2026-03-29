@@ -427,7 +427,7 @@ gaps = [
     # FIXED: ("DEBT", "12. Commitment fee") — CONSTR_FINANCE_001 has commitment_fee_rate, now wired into PL+CF
     # FIXED: ("OPERATIONAL", "13. Pre-COD revenue") — SOURCES_USES_001 has pre_completion_revenue_DKKk
     # FIXED: ("OPERATIONAL", "14. Multi-stream WC") — WORKING_CAPITAL_001 accepts list[RevenueStream]
-    ("COSMETIC", "15. Currency labels kEUR vs DKKk (math identical)"),
+    # FIXED: ("COSMETIC", "15. Currency labels") — TimelineConfig.currency_label, default kEUR
 ]
 for cat, desc in gaps:
     print(f"  [{cat}] {desc}")

@@ -81,6 +81,7 @@ class TimelineConfig(BaseModel):
     start_year: int = Field(..., description="Calendar year of period 0")
     start_month: int = Field(..., ge=1, le=12, description="Calendar month (1-12) of period 0")
     currency: str = Field("DKK", description="Project currency: DKK, EUR, USD, AUD")
+    currency_label: str = Field("kEUR", description="Currency unit label for Excel output (e.g. kEUR, DKKk, kAUD)")
 
 
 class TaxConfig(BaseModel):

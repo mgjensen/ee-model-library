@@ -726,7 +726,13 @@ FIELD_UNITS: dict[str, str] = {
     "equity_irr":                     "%",
 }
 
-FIELD_UNITS_DEFAULT = "DKKk"
+FIELD_UNITS_DEFAULT = "kEUR"  # Default currency label for Excel output
+
+
+def set_currency_label(label: str) -> None:
+    """Set the default currency unit label for Excel output."""
+    global FIELD_UNITS_DEFAULT
+    FIELD_UNITS_DEFAULT = label
 
 
 # ============================================================================
@@ -772,5 +778,5 @@ def get_label(field_name: str) -> str:
 
 
 def get_units(field_name: str) -> str:
-    """Return the units string for a field, defaulting to 'DKKk'."""
+    """Return the units string for a field, defaulting to FIELD_UNITS_DEFAULT (configurable)."""
     return FIELD_UNITS.get(field_name, FIELD_UNITS_DEFAULT)

@@ -199,7 +199,7 @@ def test_rev001_units_in_col_g(written_wb):
     ws = wb["Revenue"]
     row = get_row("REV_001", "net_revenue")
     units = ws.cell(row=row, column=COL_UNIT).value
-    assert units == "DKKk"
+    assert units == "kEUR"  # Default currency label
 
 
 def test_rev001_total_in_col_j(written_wb):

@@ -966,6 +966,10 @@ def write_workbook(
     Two-layer strategy: PL_001/CF_001/BS_001 write Excel formulas where
     available; all other modules write Python-computed values (fallback).
     """
+    # Set currency label from config before writing any cells
+    from assembly.cell_mapper import set_currency_label
+    set_currency_label(config.timeline.currency_label)
+
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
 
