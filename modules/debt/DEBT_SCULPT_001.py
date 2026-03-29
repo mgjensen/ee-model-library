@@ -670,13 +670,18 @@ def calculate(inputs: Inputs) -> Outputs:
     llcr_vals = [v for v in llcr_series if not math.isnan(v)]
     min_llcr = min(llcr_vals) if llcr_vals else float("nan")
 
-    # DSCR lookback windows
+    # DSCR lookback windows — compute only at SA period boundaries (payment months)
+    # to avoid cross-period misalignment that artificially depresses the metric
+    pm_set = set(inputs.payment_months)
     dscr_6m = [float("nan")] * n
     dscr_12m = [float("nan")] * n
     for p in range(n):
         if opening[p] < 0.01 or p < cep:
             continue
-        # 6-month lookback
+        cal_month = ((inputs.start_month - 1 + p) % 12) + 1
+        if cal_month not in pm_set:
+            continue
+        # 6-month lookback (aligned with SA period)
         start_6 = max(0, p - 5)
         sum_cfads_6 = sum(total_cfads[t] for t in range(start_6, p + 1))
         sum_ds_6 = sum(ds[t] for t in range(start_6, p + 1))
