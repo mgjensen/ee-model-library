@@ -63,6 +63,7 @@ import modules.debt.MRA_001 as MRA_001
 import modules.costs.DECOM_PROVISION_001 as DECOM_PROVISION_001
 import modules.costs.IMBALANCE_FEE_001 as IMBALANCE_FEE_001
 import modules.tax.TAX_LT_001 as TAX_LT_001
+import modules.tax.TAX_AU_001 as TAX_AU_001
 import modules.statements.WORKING_CAPITAL_001 as WORKING_CAPITAL_001
 import modules.statements.SOURCES_USES_001 as SOURCES_USES_001
 import modules.revenue.PPA_CFD_001 as PPA_CFD_001
@@ -187,6 +188,7 @@ class ProjectConfig(BaseModel):
     decom: Optional[DECOM_PROVISION_001.Inputs] = None  # DECOM_PROVISION_001
     imbalance_fee: Optional[IMBALANCE_FEE_001.Inputs] = None  # IMBALANCE_FEE_001
     tax_lt: Optional[TAX_LT_001.Inputs] = None  # TAX_LT_001
+    tax_au: Optional[TAX_AU_001.Inputs] = None  # TAX_AU_001
     tax:      Optional[TaxConfig]        = None   # TAX_001
     tax_de:   Optional[TAX_DE_001.Inputs] = None  # TAX_DE_001
     working_capital: Optional[WORKING_CAPITAL_001.Inputs] = None  # WORKING_CAPITAL_001
@@ -595,9 +597,54 @@ def run(config: ProjectConfig) -> AssemblyResult:
         )
 
     # ------------------------------------------------------------------
+    # Step 10d: TAX_AU_001 — Australian tax
+    # ------------------------------------------------------------------
+    if config.tax_au is not None:
+        tax_au_inp = config.tax_au
+        # Auto-wire ebitda, interest, capex (same pattern as TAX_LT_001)
+        _rev_pv_au    = out["REV_001"].net_revenue  if "REV_001"  in out else None
+        _rev_bess_au  = out["REV_002"].net_revenue  if "REV_002"  in out else None
+        _rev_wind_au  = out["REV_003"].net_revenue  if "REV_003"  in out else None
+        _opex_pv_au   = out["OPEX_001"].total_opex  if "OPEX_001" in out else None
+        _opex_bess_au = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
+        _opex_wind_au = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
+        _gross_rev_au = _add_series(_rev_pv_au, _rev_bess_au, _rev_wind_au, n=n)
+        _opex_au = _add_series(_opex_pv_au, _opex_bess_au, _opex_wind_au, n=n)
+        _ebitda_au = [_gross_rev_au[p] - _opex_au[p] for p in range(n)]
+        _debt_out_au = out.get("DEBT_001")
+        _sculpt_out_au = out.get("DEBT_SCULPT_001")
+        _int_au = _debt_out_au.interest if _debt_out_au else _zeros(n)
+        if _sculpt_out_au:
+            _int_au = [_int_au[p] + _sculpt_out_au.interest_accrued[p] for p in range(n)]
+        _constr_au = out.get("CONSTR_FINANCE_001")
+        if _constr_au:
+            _int_au = [_int_au[p] + _constr_au.interest[p] for p in range(n)]
+        _shl_au = out.get("SHL_001")
+        if _shl_au:
+            _int_au = [_int_au[p] + _shl_au.interest[p] for p in range(n)]
+        if not tax_au_inp.capex_by_bucket or all(
+            all(v == 0 for v in b) for b in tax_au_inp.capex_by_bucket
+        ):
+            if "CAPEX_001" in out:
+                _capex_au = out["CAPEX_001"].total_capex_monthly
+                _capex_by_bucket_au = [_capex_au] + [_zeros(n) for _ in range(6)]
+            else:
+                _capex_by_bucket_au = [_zeros(n) for _ in range(7)]
+        else:
+            _capex_by_bucket_au = tax_au_inp.capex_by_bucket
+        tax_au_inp = tax_au_inp.model_copy(update={
+            "ebitda": _ebitda_au,
+            "interest_expense": _int_au,
+            "capex_by_bucket": _capex_by_bucket_au,
+        })
+        out["TAX_AU_001"] = TAX_AU_001.calculate(
+            _inject_timeline(tax_au_inp, tl)
+        )
+
+    # ------------------------------------------------------------------
     # Step 9: PL_001 — P&L (fully wired)
     # ------------------------------------------------------------------
-    if any(k in out for k in ("TAX_001", "TAX_DE_001", "TAX_LT_001", "DEBT_001", "DEBT_SCULPT_001", "REV_001", "REV_002", "REV_003")):
+    if any(k in out for k in ("TAX_001", "TAX_DE_001", "TAX_LT_001", "TAX_AU_001", "DEBT_001", "DEBT_SCULPT_001", "REV_001", "REV_002", "REV_003")):
         rev_pv_net    = out["REV_001"].net_revenue  if "REV_001"  in out else None
         rev_bess_net  = out["REV_002"].net_revenue  if "REV_002"  in out else None
         rev_wind_net  = out["REV_003"].net_revenue  if "REV_003"  in out else None
@@ -607,12 +654,13 @@ def run(config: ProjectConfig) -> AssemblyResult:
         tax_out = out.get("TAX_001")
         tax_de_out = out.get("TAX_DE_001")
         tax_lt_out = out.get("TAX_LT_001")
+        tax_au_out = out.get("TAX_AU_001")
         debt_out = out.get("DEBT_001")
         sculpt_out = out.get("DEBT_SCULPT_001")
 
         gross_rev = _add_series(rev_pv_net, rev_bess_net, rev_wind_net, n=n)
         total_opex_combined = _add_series(opex_pv_tot, opex_bess_tot, opex_wind_tot, n=n)
-        _tax_any = tax_out or tax_de_out or tax_lt_out
+        _tax_any = tax_out or tax_de_out or tax_lt_out or tax_au_out
         dep = _tax_any.tax_depreciation if _tax_any else _zeros(n)
         # Add BESS repowering accounting depreciation
         repow_out = out.get("BESS_REPOW_001")
@@ -667,7 +715,7 @@ def run(config: ProjectConfig) -> AssemblyResult:
     # ------------------------------------------------------------------
     if "PL_001" in out:
         pl_out = out["PL_001"]
-        _tax_any_cf = out.get("TAX_001") or out.get("TAX_DE_001") or out.get("TAX_LT_001")
+        _tax_any_cf = out.get("TAX_001") or out.get("TAX_DE_001") or out.get("TAX_LT_001") or out.get("TAX_AU_001")
         debt_out = out.get("DEBT_001")
         sculpt_out = out.get("DEBT_SCULPT_001")
         capex_out = out.get("CAPEX_001")
@@ -808,7 +856,7 @@ def run(config: ProjectConfig) -> AssemblyResult:
     if "CF_001" in out:
         cf_out = out["CF_001"]
         pl_out = out["PL_001"]
-        _tax_any_bs = out.get("TAX_001") or out.get("TAX_DE_001") or out.get("TAX_LT_001")
+        _tax_any_bs = out.get("TAX_001") or out.get("TAX_DE_001") or out.get("TAX_LT_001") or out.get("TAX_AU_001")
         debt_out = out.get("DEBT_001")
         capex_out = out.get("CAPEX_001")
         sc = config.statements
@@ -900,7 +948,7 @@ def run(config: ProjectConfig) -> AssemblyResult:
         # Adjust for unlevered tax: remove interest tax shield from PFCF
         # PFCF currently uses levered tax (with interest deductions).
         # Unlevered PFCF should use higher tax (no interest deductions).
-        tax_out_irr = out.get("TAX_001") or out.get("TAX_DE_001") or out.get("TAX_LT_001")
+        tax_out_irr = out.get("TAX_001") or out.get("TAX_DE_001") or out.get("TAX_LT_001") or out.get("TAX_AU_001")
         if tax_out_irr and hasattr(tax_out_irr, 'unlevered_tax_charge_accrued'):
             for p in range(n):
                 tax_shield = tax_out_irr.unlevered_tax_charge_accrued[p] - tax_out_irr.tax_charge_accrued[p]

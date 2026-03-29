@@ -554,6 +554,7 @@ _CONFIG_FIELD_TO_MODULE: dict[str, str] = {
     "imbalance_fee": "IMBALANCE_FEE_001",
     "tax_lt": "TAX_LT_001",
     "tax_de": "TAX_DE_001",
+    "tax_au": "TAX_AU_001",
     "working_capital": "WORKING_CAPITAL_001",
     "sources_uses": "SOURCES_USES_001",
     "valuation": "VALUATION_001",

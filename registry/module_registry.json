@@ -151,11 +151,13 @@
     },
     "REV_002": {
         "module_id": "REV_002",
-        "version": "1.0",
+        "version": "1.1",
         "tier": "detailed",
         "markets": [
             "DK",
             "DE",
+            "AU",
+            "SE",
             "*"
         ],
         "technologies": [
@@ -163,7 +165,7 @@
         ],
         "path": "modules/revenue/REV_002.py",
         "created": "2026-03-17",
-        "modified": "2026-03-18"
+        "modified": "2026-03-30"
     },
     "REV_003": {
         "module_id": "REV_003",
@@ -634,6 +636,23 @@
         "path": "modules/tax/TAX_LT_001.py",
         "created": "2026-03-18",
         "modified": "2026-03-29"
+    },
+    "TAX_AU_001": {
+        "module_id": "TAX_AU_001",
+        "version": "1.0",
+        "tier": "detailed",
+        "markets": [
+            "AU"
+        ],
+        "technologies": [
+            "PV",
+            "BESS",
+            "WIND",
+            "*"
+        ],
+        "path": "modules/tax/TAX_AU_001.py",
+        "created": "2026-03-30",
+        "modified": "2026-03-30"
     },
     "BRIDGE_FACILITY_001": {
         "module_id": "BRIDGE_FACILITY_001",

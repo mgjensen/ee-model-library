@@ -58,7 +58,7 @@ def _extract_cfads(result: AssemblyResult, n: int) -> list[float]:
 
     ebitda = [gross_rev[p] - total_opex[p] for p in range(n)]
 
-    tax_out = out.get("TAX_001") or out.get("TAX_DE_001") or out.get("TAX_LT_001")
+    tax_out = out.get("TAX_001") or out.get("TAX_DE_001") or out.get("TAX_LT_001") or out.get("TAX_AU_001")
     tax_paid = tax_out.tax_paid if tax_out else [0.0] * n
 
     return [ebitda[p] - tax_paid[p] for p in range(n)]
