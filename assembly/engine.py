@@ -425,12 +425,18 @@ def run(config: ProjectConfig) -> AssemblyResult:
     # ------------------------------------------------------------------
     if config.dsra is not None:
         dsra_inp = config.dsra
-        # Auto-wire debt_service from DEBT_001 if not provided
-        debt_out = out.get("DEBT_001")
-        if (not dsra_inp.debt_service or all(d == 0 for d in dsra_inp.debt_service)) and debt_out:
-            dsra_inp = dsra_inp.model_copy(update={
-                "debt_service": debt_out.debt_service,
-            })
+        # Auto-wire debt_service from DEBT_001 or DEBT_SCULPT_001 if not provided
+        _debt_dsra = out.get("DEBT_001")
+        _sculpt_dsra = out.get("DEBT_SCULPT_001")
+        if not dsra_inp.debt_service or all(d == 0 for d in dsra_inp.debt_service):
+            if _debt_dsra:
+                dsra_inp = dsra_inp.model_copy(update={
+                    "debt_service": _debt_dsra.debt_service,
+                })
+            elif _sculpt_dsra:
+                dsra_inp = dsra_inp.model_copy(update={
+                    "debt_service": _sculpt_dsra.debt_service,
+                })
         out["DSRA_001"] = DSRA_001.calculate(_inject_timeline(dsra_inp, tl))
 
     # ------------------------------------------------------------------
@@ -538,14 +544,60 @@ def run(config: ProjectConfig) -> AssemblyResult:
     # Step 10c: TAX_LT_001 — Lithuanian tax
     # ------------------------------------------------------------------
     if config.tax_lt is not None:
+        tax_lt_inp = config.tax_lt
+        # Auto-wire ebitda, interest, and capex from upstream modules
+        _rev_pv_net    = out["REV_001"].net_revenue  if "REV_001"  in out else None
+        _rev_bess_net  = out["REV_002"].net_revenue  if "REV_002"  in out else None
+        _rev_wind_net  = out["REV_003"].net_revenue  if "REV_003"  in out else None
+        _opex_pv_tot   = out["OPEX_001"].total_opex  if "OPEX_001" in out else None
+        _opex_bess_tot = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
+        _opex_wind_tot = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
+        _gross_rev_lt = _add_series(_rev_pv_net, _rev_bess_net, _rev_wind_net, n=n)
+        _opex_lt = _add_series(_opex_pv_tot, _opex_bess_tot, _opex_wind_tot, n=n)
+        _ebitda_lt = [_gross_rev_lt[p] - _opex_lt[p] for p in range(n)]
+
+        # Interest from all debt modules
+        _debt_out_lt = out.get("DEBT_001")
+        _sculpt_out_lt = out.get("DEBT_SCULPT_001")
+        _int_lt = _debt_out_lt.interest if _debt_out_lt else _zeros(n)
+        if _sculpt_out_lt:
+            _int_lt = [_int_lt[p] + _sculpt_out_lt.interest_accrued[p] for p in range(n)]
+        _constr_lt = out.get("CONSTR_FINANCE_001")
+        if _constr_lt:
+            _int_lt = [_int_lt[p] + _constr_lt.interest[p] for p in range(n)]
+        _shl_lt = out.get("SHL_001")
+        if _shl_lt:
+            _int_lt = [_int_lt[p] + _shl_lt.interest[p] for p in range(n)]
+
+        # Capex buckets
+        if not tax_lt_inp.capex_by_bucket or all(
+            all(v == 0 for v in b) for b in tax_lt_inp.capex_by_bucket
+        ):
+            if "CAPEX_001" in out:
+                _capex_m = out["CAPEX_001"].total_capex_monthly
+                _capex_by_bucket_lt = [_capex_m] + [_zeros(n) for _ in range(6)]
+            else:
+                _capex_by_bucket_lt = [_zeros(n) for _ in range(7)]
+        else:
+            _capex_by_bucket_lt = tax_lt_inp.capex_by_bucket
+
+        _update_lt = {
+            "ebitda": _ebitda_lt,
+            "interest_expense": _int_lt,
+            "capex_by_bucket": _capex_by_bucket_lt,
+        }
+        # Auto-wire SHL interest for SHL deduction limit
+        if _shl_lt and tax_lt_inp.shl_interest_limit_active:
+            _update_lt["shl_interest_expense"] = list(_shl_lt.interest)
+        tax_lt_inp = tax_lt_inp.model_copy(update=_update_lt)
         out["TAX_LT_001"] = TAX_LT_001.calculate(
-            _inject_timeline(config.tax_lt, tl)
+            _inject_timeline(tax_lt_inp, tl)
         )
 
     # ------------------------------------------------------------------
     # Step 9: PL_001 — P&L (fully wired)
     # ------------------------------------------------------------------
-    if any(k in out for k in ("TAX_001", "DEBT_001", "REV_001", "REV_002", "REV_003")):
+    if any(k in out for k in ("TAX_001", "TAX_DE_001", "TAX_LT_001", "DEBT_001", "DEBT_SCULPT_001", "REV_001", "REV_002", "REV_003")):
         rev_pv_net    = out["REV_001"].net_revenue  if "REV_001"  in out else None
         rev_bess_net  = out["REV_002"].net_revenue  if "REV_002"  in out else None
         rev_wind_net  = out["REV_003"].net_revenue  if "REV_003"  in out else None
@@ -554,18 +606,22 @@ def run(config: ProjectConfig) -> AssemblyResult:
         opex_wind_tot = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
         tax_out = out.get("TAX_001")
         tax_de_out = out.get("TAX_DE_001")
+        tax_lt_out = out.get("TAX_LT_001")
         debt_out = out.get("DEBT_001")
+        sculpt_out = out.get("DEBT_SCULPT_001")
 
         gross_rev = _add_series(rev_pv_net, rev_bess_net, rev_wind_net, n=n)
         total_opex_combined = _add_series(opex_pv_tot, opex_bess_tot, opex_wind_tot, n=n)
-        dep = tax_out.tax_depreciation if tax_out else (
-            tax_de_out.tax_depreciation if tax_de_out else _zeros(n)
-        )
+        _tax_any = tax_out or tax_de_out or tax_lt_out
+        dep = _tax_any.tax_depreciation if _tax_any else _zeros(n)
         # Add BESS repowering accounting depreciation
         repow_out = out.get("BESS_REPOW_001")
         if repow_out:
             dep = [dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
         interest = debt_out.interest if debt_out else _zeros(n)
+        # Add sculpted debt interest (accrued = expense for PL)
+        if sculpt_out:
+            interest = [interest[p] + sculpt_out.interest_accrued[p] for p in range(n)]
         # Add refi interest
         refi_out = out.get("DEBT_REFI_001")
         if refi_out:
@@ -592,9 +648,7 @@ def run(config: ProjectConfig) -> AssemblyResult:
         if shl_out:
             interest = [interest[p] + (shl_out.interest[p] if p >= _cod else 0.0)
                         for p in range(n)]
-        tax_charge = tax_out.tax_charge_accrued if tax_out else (
-            tax_de_out.tax_charge_accrued if tax_de_out else _zeros(n)
-        )
+        tax_charge = _tax_any.tax_charge_accrued if _tax_any else _zeros(n)
 
         pl_inputs = PL_001.Inputs(
             periods=n,
@@ -613,13 +667,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
     # ------------------------------------------------------------------
     if "PL_001" in out:
         pl_out = out["PL_001"]
-        tax_out = out.get("TAX_001")
+        _tax_any_cf = out.get("TAX_001") or out.get("TAX_DE_001") or out.get("TAX_LT_001")
         debt_out = out.get("DEBT_001")
+        sculpt_out = out.get("DEBT_SCULPT_001")
         capex_out = out.get("CAPEX_001")
         sc = config.statements
 
         repow_out = out.get("BESS_REPOW_001")
-        cf_dep = tax_out.tax_depreciation if tax_out else _zeros(n)
+        cf_dep = _tax_any_cf.tax_depreciation if _tax_any_cf else _zeros(n)
         if repow_out:
             cf_dep = [cf_dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
         cf_capex = capex_out.total_capex_monthly if capex_out else _zeros(n)
@@ -629,6 +684,11 @@ def run(config: ProjectConfig) -> AssemblyResult:
         cf_draw = debt_out.drawdown if debt_out else []
         cf_princ = debt_out.principal if debt_out else []
         cf_int = debt_out.interest if debt_out else _zeros(n)
+        # Sculpted debt cash flows
+        if sculpt_out:
+            cf_draw = _add_series(cf_draw or None, sculpt_out.drawdown, n=n)
+            cf_princ = _add_series(cf_princ or None, sculpt_out.principal, n=n)
+            cf_int = [cf_int[p] + sculpt_out.interest_paid[p] for p in range(n)]
         refi_out = out.get("DEBT_REFI_001")
         if refi_out:
             cf_draw = _add_series(cf_draw or None, refi_out.drawdown, n=n)
@@ -705,12 +765,22 @@ def run(config: ProjectConfig) -> AssemblyResult:
                     else (config.capex.construction_start_period + config.capex.construction_periods
                           if config.capex else 0))
 
+        # Adjust net_income for SHL PIK interest: non-cash charge should not
+        # suppress distributable profits (PIK is already added back in CF)
+        div_net_income = list(pl_out.net_income)
+        _shl_div = out.get("SHL_001")
+        if _shl_div:
+            for p in range(n):
+                pik = _shl_div.interest[p] - _shl_div.interest_cash[p]
+                if p >= _cod_div:
+                    div_net_income[p] += pik
+
         div_inputs = DIV_001.Inputs(
             periods=n,
             start_year=tl.start_year,
             start_month=tl.start_month,
             cod_period=_cod_div,
-            net_income=pl_out.net_income,
+            net_income=div_net_income,
             closing_cash=cf_out.closing_cash,
             opening_retained_earnings=sc.opening_retained_earnings_DKKk,
             opening_contributed_equity=sc.opening_contributed_equity_DKKk,
@@ -738,14 +808,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
     if "CF_001" in out:
         cf_out = out["CF_001"]
         pl_out = out["PL_001"]
-        tax_out = out.get("TAX_001")
+        _tax_any_bs = out.get("TAX_001") or out.get("TAX_DE_001") or out.get("TAX_LT_001")
         debt_out = out.get("DEBT_001")
         capex_out = out.get("CAPEX_001")
         sc = config.statements
 
         repow_out = out.get("BESS_REPOW_001")
         bs_capex = capex_out.total_capex_monthly if capex_out else _zeros(n)
-        bs_dep = tax_out.tax_depreciation if tax_out else _zeros(n)
+        bs_dep = _tax_any_bs.tax_depreciation if _tax_any_bs else _zeros(n)
         if repow_out:
             bs_capex = [bs_capex[p] + repow_out.repowering_cost_monthly[p] for p in range(n)]
             bs_dep = [bs_dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
@@ -778,6 +848,7 @@ def run(config: ProjectConfig) -> AssemblyResult:
             closing_cash=cf_out.closing_cash,
             debt_closing_balance=_add_series(
                 debt_out.closing_balance if debt_out else None,
+                out["DEBT_SCULPT_001"].closing_balance if "DEBT_SCULPT_001" in out else None,
                 out["DEBT_REFI_001"].closing_balance if "DEBT_REFI_001" in out else None,
                 out["DEBT_LINEAR_001"].total_closing_balance if "DEBT_LINEAR_001" in out else None,
                 out["CONSTR_FINANCE_001"].closing_balance if "CONSTR_FINANCE_001" in out else None,
@@ -809,27 +880,42 @@ def run(config: ProjectConfig) -> AssemblyResult:
         sc = config.statements
 
         pfcf = [cf_out.cfo[p] + cf_out.cfi[p] for p in range(n)]
+        # PFCF = CFO + CFI is levered (includes cash interest via net_income).
+        # For unlevered Project IRR, add back cash interest only.
+        # PIK interest is already neutral in CFO (deducted in NI, added back as
+        # non-cash in depreciation), so only cash interest needs to be restored.
+        pl_out_irr = out.get("PL_001")
+        if pl_out_irr:
+            _shl_irr = out.get("SHL_001")
+            _cod_irr = (config.constr_finance.cod_period if config.constr_finance
+                        else (config.capex.construction_start_period + config.capex.construction_periods
+                              if config.capex else 0))
+            for p in range(n):
+                addback = pl_out_irr.interest_expense[p]
+                # Subtract SHL PIK (already neutralised in CFO via non-cash addback)
+                if _shl_irr and p >= _cod_irr:
+                    pik = _shl_irr.interest[p] - _shl_irr.interest_cash[p]
+                    addback -= pik
+                pfcf[p] += addback
         # Adjust for unlevered tax: remove interest tax shield from PFCF
         # PFCF currently uses levered tax (with interest deductions).
         # Unlevered PFCF should use higher tax (no interest deductions).
-        tax_out_irr = out.get("TAX_001") or out.get("TAX_DE_001")
+        tax_out_irr = out.get("TAX_001") or out.get("TAX_DE_001") or out.get("TAX_LT_001")
         if tax_out_irr and hasattr(tax_out_irr, 'unlevered_tax_charge_accrued'):
             for p in range(n):
                 tax_shield = tax_out_irr.unlevered_tax_charge_accrued[p] - tax_out_irr.tax_charge_accrued[p]
-                pfcf[p] -= tax_shield  # higher tax → lower PFCF
+                pfcf[p] -= tax_shield  # higher tax -> lower PFCF
 
         # Equity cash flow from the equity HOLDER's perspective:
-        # ECF = -equity_injection + dividends_received + capital_reduction
-        # Negative at start (money in), positive during ops (money back)
+        # SHL is a separate instrument (earns its own PIK return).
+        # ECF = -pure_equity + dividends + capital_reduction
         div_out = out.get("DIV_001")
         shl_out_ecf = out.get("SHL_001")
         if div_out and shl_out_ecf and config.shl and config.shl.equity_contributed:
             shl_pct = config.shl.shl_pct_of_equity
             ecf = [0.0] * n
             for p in range(n):
-                # Equity injection (negative = cash out from holder)
                 eq_in = (1.0 - shl_pct) * config.shl.equity_contributed[p]
-                # Dividends received (positive = cash to holder)
                 div_p = div_out.dividends_paid[p]
                 cap_red = div_out.capital_reduction[p]
                 ecf[p] = -eq_in + div_p + cap_red
