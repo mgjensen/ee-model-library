@@ -42,6 +42,7 @@ Source: EE_MODEL_BUILD_SPEC.md v2.0 §10
 from __future__ import annotations
 
 from collections import OrderedDict
+from typing import Optional
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -57,7 +58,10 @@ class Inputs(BaseModel):
 
     # Opening balance sheet (DKKk)
     opening_contributed_equity_DKKk: float = Field(
-        0.0, description="Equity injected at financial close (constant throughout life)"
+        0.0, description="Equity at model start. If equity_contributions is set, this is the opening balance; otherwise it's a constant across all periods."
+    )
+    equity_contributions: Optional[list[float]] = Field(
+        None, description="Monthly equity drawdowns DKKk. If set, contributed_equity accumulates from this series + opening. If None, contributed_equity is a constant."
     )
     opening_retained_earnings_DKKk: float = Field(
         0.0, description="Retained earnings carried in at start"
@@ -110,6 +114,8 @@ class Inputs(BaseModel):
                 raise ValueError(f"{name} length {len(lst)} != periods {n}")
         if self.dividends_paid and len(self.dividends_paid) != n:
             raise ValueError(f"dividends_paid length {len(self.dividends_paid)} != periods {n}")
+        if self.equity_contributions is not None and len(self.equity_contributions) != n:
+            raise ValueError(f"equity_contributions length {len(self.equity_contributions)} != periods {n}")
         return self
 
     def _zeros(self, name: str) -> list[float]:
@@ -159,7 +165,15 @@ def calculate(inputs: Inputs) -> Outputs:
     n = inputs.periods
     div = inputs._zeros("dividends_paid")
 
-    contributed = inputs.opening_contributed_equity_DKKk
+    # Contributed equity: accumulated from drawdowns or constant
+    if inputs.equity_contributions is not None:
+        contributed_series = []
+        eq = inputs.opening_contributed_equity_DKKk
+        for p in range(n):
+            eq += inputs.equity_contributions[p]
+            contributed_series.append(eq)
+    else:
+        contributed_series = [inputs.opening_contributed_equity_DKKk] * n
 
     # Cumulative capex (fixed assets gross), seeded with opening balance
     fa_gross = []
@@ -194,8 +208,7 @@ def calculate(inputs: Inputs) -> Outputs:
         re += inputs.net_income[p] - div[p]
         retained.append(re)
 
-    contributed_series = [contributed] * n
-    total_equity = [contributed + retained[p] for p in range(n)]
+    total_equity = [contributed_series[p] + retained[p] for p in range(n)]
     total_le = [debt[p] + total_equity[p] for p in range(n)]
 
     imbalance = [total_assets[p] - total_le[p] for p in range(n)]

@@ -124,7 +124,7 @@ def _irr_monthly(cash_flows: list[float], tol: float = 1e-8, max_iter: int = 200
 
     # Adaptive bounds: start narrow, widen if needed.
     # Large negative rates overflow for long horizons (e.g. -0.5 at 372 periods).
-    for lo, hi in [(-0.01, 0.5), (-0.05, 1.0), (-0.2, 1.0)]:
+    for lo, hi in [(-0.001, 0.1), (-0.01, 0.5), (-0.05, 1.0), (-0.2, 1.0)]:
         npv_lo = _npv(cash_flows, lo)
         npv_hi = _npv(cash_flows, hi)
         if npv_lo * npv_hi <= 0:

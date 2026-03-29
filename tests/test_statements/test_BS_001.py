@@ -374,3 +374,70 @@ def test_retrofit_validation_acc_dep_must_be_negative():
     """Accumulated depreciation must be <= 0."""
     with pytest.raises(Exception):
         _make_retrofit_inputs(opening_acc_dep=100.0)
+
+
+# ============================================================================
+# EQUITY CONTRIBUTIONS TIME SERIES
+# ============================================================================
+
+def test_equity_contributions_accumulates():
+    """Equity contributions accumulate over time instead of being constant."""
+    out = calculate(Inputs(
+        periods=12, start_year=2026, start_month=1,
+        opening_contributed_equity_DKKk=0.0,
+        equity_contributions=[1000.0] * 6 + [0.0] * 6,
+        capex_monthly=[1000.0] * 6 + [0.0] * 6,
+        depreciation_monthly=[100.0] * 12,
+        closing_cash=[500.0] * 12,
+        debt_closing_balance=[0.0] * 12,
+        net_income=[50.0] * 12,
+    ))
+    # After 6 months of 1000 equity draws: contributed = 6000
+    assert abs(out.contributed_equity[5] - 6000.0) < 0.01
+    # After month 6, no more draws: stays at 6000
+    assert abs(out.contributed_equity[11] - 6000.0) < 0.01
+
+
+def test_equity_contributions_with_opening():
+    """Opening equity + contributions accumulate correctly."""
+    out = calculate(Inputs(
+        periods=6, start_year=2026, start_month=1,
+        opening_contributed_equity_DKKk=5000.0,
+        equity_contributions=[1000.0] * 6,
+        capex_monthly=[0.0] * 6,
+        depreciation_monthly=[0.0] * 6,
+        closing_cash=[0.0] * 6,
+        debt_closing_balance=[0.0] * 6,
+        net_income=[0.0] * 6,
+    ))
+    # P0: 5000 + 1000 = 6000
+    assert abs(out.contributed_equity[0] - 6000.0) < 0.01
+    # P5: 5000 + 6*1000 = 11000
+    assert abs(out.contributed_equity[5] - 11000.0) < 0.01
+
+
+def test_equity_contributions_none_uses_constant():
+    """Without equity_contributions, contributed_equity is constant."""
+    out = calculate(Inputs(
+        periods=6, start_year=2026, start_month=1,
+        opening_contributed_equity_DKKk=5000.0,
+        capex_monthly=[0.0] * 6,
+        depreciation_monthly=[0.0] * 6,
+        closing_cash=[0.0] * 6,
+        debt_closing_balance=[0.0] * 6,
+        net_income=[0.0] * 6,
+    ))
+    assert all(v == 5000.0 for v in out.contributed_equity)
+
+
+def test_equity_contributions_validation_wrong_length():
+    with pytest.raises(ValueError, match="equity_contributions length"):
+        Inputs(
+            periods=12, start_year=2026, start_month=1,
+            equity_contributions=[1000.0] * 10,
+            capex_monthly=[0.0] * 12,
+            depreciation_monthly=[0.0] * 12,
+            closing_cash=[0.0] * 12,
+            debt_closing_balance=[0.0] * 12,
+            net_income=[0.0] * 12,
+        )

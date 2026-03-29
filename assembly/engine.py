@@ -781,6 +781,14 @@ def run(config: ProjectConfig) -> AssemblyResult:
             ),
             net_income=pl_out.net_income,
         )
+        # Equity contributions as time series — pure equity only (not SHL)
+        # SHL is already on the BS as debt (via debt_closing_balance)
+        shl_out = out.get("SHL_001")
+        if shl_out and config.shl and config.shl.equity_contributed:
+            shl_pct = config.shl.shl_pct_of_equity
+            eq_pure = [(1.0 - shl_pct) * config.shl.equity_contributed[p] for p in range(n)]
+            bs_kwargs["equity_contributions"] = eq_pure
+
         if dividends_computed:
             bs_kwargs["dividends_paid"] = dividends_computed
         elif sc.dividends_paid:

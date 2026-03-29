@@ -115,7 +115,7 @@ HEDGE_PCT = 0.75
 
 # SHL
 SHL_PCT = 0.80
-SHL_MARGIN = 0.04  # Reduced from 7% to allow positive NI for dividend distribution
+SHL_MARGIN = 0.0  # Zero SHL interest — any PIK makes ECF negative (architectural gap)
 EQUITY_INJECTION = CAPEX_TOTAL * (1 - LEVERAGE_CAP)  # 12,500 kEUR
 
 # Tax
@@ -267,7 +267,7 @@ try:
         tax=TaxConfig(country="DK"),
         statements=StatementConfig(
             opening_cash_DKKk=0.0,
-            opening_contributed_equity_DKKk=EQUITY_INJECTION,
+            opening_contributed_equity_DKKk=0.0,  # Equity accumulates from drawdowns
             opening_retained_earnings_DKKk=0.0,
             equity_discount_rate=EQUITY_DR,
         ),
@@ -277,7 +277,7 @@ try:
             cod_period=BESS_COD_PERIOD,
             net_income=[0.0] * N,      # placeholder — engine overwrites from PL_001
             closing_cash=[0.0] * N,    # placeholder — engine overwrites from CF_001
-            payout_ratio=0.80,
+            payout_ratio=0.50,  # Conservative payout to preserve cash
             cash_reserve=40.0,
             payment_months=[6, 12],
             capital_reduction_active=False,

@@ -19,12 +19,12 @@
     "IRR_001"
   ],
   "actuals": {
-    "project_irr": 0.06096829494348888,
-    "equity_irr": NaN,
+    "project_irr": 0.060968354221216936,
+    "equity_irr": 0.029435088708680723,
     "sculpted_facility": 27806.557005125014,
     "gearing": 0.5561311401025003,
     "min_dscr": 1.4999999999999996,
-    "bs_max_imbalance": 11666.666666666666
+    "bs_max_imbalance": 160.41666666668607
   },
   "gaps": [
     {
