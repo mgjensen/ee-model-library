@@ -1,0 +1,91 @@
+{
+  "run": "master_model_calibration_02",
+  "date": "2026-03-28",
+  "modules_run": [
+    "WACC_001",
+    "REV_001",
+    "REV_002",
+    "OPEX_001",
+    "OPEX_002",
+    "CAPEX_001",
+    "CONSTR_FINANCE_001",
+    "DEBT_SCULPT_001",
+    "SHL_001",
+    "TAX_001",
+    "PL_001",
+    "CF_001",
+    "BS_001",
+    "IRR_001"
+  ],
+  "actuals": {
+    "project_irr": 0.06096829494348888,
+    "equity_irr": 0.05917600429708192,
+    "sculpted_facility": 27806.557005125014,
+    "gearing": 0.5561311401025003,
+    "min_dscr": 1.4999999999999996,
+    "bs_max_imbalance": 160.41666666675883
+  },
+  "gaps": [
+    {
+      "category": "STRUCTURAL",
+      "description": "1. No dividend distribution -- cash accumulates"
+    },
+    {
+      "category": "STRUCTURAL",
+      "description": "2. No capital reduction -- equity inflated after ops end"
+    },
+    {
+      "category": "STRUCTURAL",
+      "description": "3. No equity-first construction -- CONSTR_FINANCE_001 uses pro-rata"
+    },
+    {
+      "category": "STRUCTURAL",
+      "description": "4. No unlevered tax pass -- Project IRR uses levered tax (~0.3pp overstate)"
+    },
+    {
+      "category": "STRUCTURAL",
+      "description": "5. No full-engine debt sizing iteration -- two-pass workaround"
+    },
+    {
+      "category": "STRUCTURAL",
+      "description": "6. No semi-annual payment frequency -- using monthly equivalent [6,12]"
+    },
+    {
+      "category": "VALUATION",
+      "description": "7. No Buy-and-Sell valuation / incoming investor IRR"
+    },
+    {
+      "category": "VALUATION",
+      "description": "8. No LLCR calculation (module has it but not calibrated)"
+    },
+    {
+      "category": "DEBT",
+      "description": "9. No DSRF module"
+    },
+    {
+      "category": "DEBT",
+      "description": "10. No 3-period margin step-ups (using flat margin)"
+    },
+    {
+      "category": "DEBT",
+      "description": "11. No revenue-weighted 4-stream DSCR (using single 1.50x)"
+    },
+    {
+      "category": "DEBT",
+      "description": "12. No commitment fee on undrawn construction facility"
+    },
+    {
+      "category": "OPERATIONAL",
+      "description": "13. Pre-COD revenue not wired into Sources & Uses"
+    },
+    {
+      "category": "OPERATIONAL",
+      "description": "14. Working capital: single-stream vs 4-stream receivables"
+    },
+    {
+      "category": "COSMETIC",
+      "description": "15. Currency labels kEUR vs DKKk (math identical)"
+    }
+  ],
+  "warnings": []
+}
