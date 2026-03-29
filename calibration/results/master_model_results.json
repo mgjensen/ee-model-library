@@ -19,12 +19,12 @@
     "IRR_001"
   ],
   "actuals": {
-    "project_irr": 0.060968354221216936,
-    "equity_irr": 0.14511652916263884,
+    "project_irr": 0.06077693696294073,
+    "equity_irr": 0.14484205434601982,
     "sculpted_facility": 26063.20346990442,
     "gearing": 0.5212640693980884,
     "min_dscr": 1.6799999999999997,
-    "bs_max_imbalance": 160.41666666670062
+    "bs_max_imbalance": 247.91666666670062
   },
   "gaps": [
     {
@@ -46,14 +46,6 @@
     {
       "category": "VALUATION",
       "description": "7. No Buy-and-Sell valuation / incoming investor IRR"
-    },
-    {
-      "category": "DEBT",
-      "description": "9. No DSRF module"
-    },
-    {
-      "category": "DEBT",
-      "description": "12. No commitment fee on undrawn construction facility"
     },
     {
       "category": "OPERATIONAL",

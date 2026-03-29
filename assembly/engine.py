@@ -578,10 +578,13 @@ def run(config: ProjectConfig) -> AssemblyResult:
                 else (config.capex.construction_start_period + config.capex.construction_periods
                       if config.capex else 0))
 
-        # Construction finance interest — post-COD only in PL
+        # Construction finance interest + commitment fee — post-COD only in PL
+        # (pre-COD interest capitalised as IDC; commitment fee always expensed)
         constr_out = out.get("CONSTR_FINANCE_001")
         if constr_out:
-            interest = [interest[p] + (constr_out.interest[p] if p >= _cod else 0.0)
+            interest = [interest[p]
+                        + (constr_out.interest[p] if p >= _cod else 0.0)
+                        + constr_out.commitment_fee[p]
                         for p in range(n)]
         # SHL interest — post-COD only in PL (pre-COD capitalised as IDC)
         shl_out = out.get("SHL_001")
@@ -639,7 +642,8 @@ def run(config: ProjectConfig) -> AssemblyResult:
         if constr_out:
             cf_draw = _add_series(cf_draw or None, constr_out.drawdown, n=n)
             cf_princ = _add_series(cf_princ or None, constr_out.repayment, n=n)
-            cf_int = [cf_int[p] + constr_out.interest[p] for p in range(n)]
+            cf_int = [cf_int[p] + constr_out.interest[p] + constr_out.commitment_fee[p]
+                      for p in range(n)]
 
         # SHL wiring into CF
         shl_out = out.get("SHL_001")

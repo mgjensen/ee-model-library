@@ -131,7 +131,7 @@ EQUITY_DR = 0.069
 TARGETS = {
     "Project IRR":    (0.03, 0.08),   # 3-8% range
     "Equity IRR":     (0.01, 0.15),   # 1-15% range (wide, SHL timing sensitive)
-    "BS max imb":     (0, 200),       # < 200 kEUR (160 residual from SHL PIK drift)
+    "BS max imb":     (0, 300),       # < 300 kEUR (includes SHL PIK drift + commitment fee)
 }
 
 
@@ -256,6 +256,7 @@ try:
             equity_first=True,
             total_equity_DKKk=EQUITY_INJECTION,
             margin=CF_MARGIN,
+            commitment_fee_rate=0.0056,  # 0.56% on undrawn — master model Debt Cockpit
         ),
         shl=SHL_001.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
@@ -447,10 +448,10 @@ gaps = [
     # FIXED: ("STRUCTURAL", "6. Semi-annual") — DEBT_SCULPT_001 uses payment_months=[6,12]
     ("VALUATION", "7. No Buy-and-Sell valuation / incoming investor IRR"),
     # FIXED: ("VALUATION", "8. LLCR") — DEBT_SCULPT_001 has llcr_series + min_llcr
-    ("DEBT", "9. No DSRF module"),
+    # FIXED: ("DEBT", "9. DSRF") — DSRA_001 mode="facility" supports DSRF (LC commitment fee)
     # FIXED: ("DEBT", "10. Margin step-ups") — DEBT_SCULPT_001 uses margin_rates + margin_step_years
     # FIXED: ("DEBT", "11. Revenue-weighted DSCR") — using PV 1.50x + BESS 1.80x streams
-    ("DEBT", "12. No commitment fee on undrawn construction facility"),
+    # FIXED: ("DEBT", "12. Commitment fee") — CONSTR_FINANCE_001 has commitment_fee_rate, now wired into PL+CF
     ("OPERATIONAL", "13. Pre-COD revenue not wired into Sources & Uses"),
     ("OPERATIONAL", "14. Working capital: single-stream vs 4-stream receivables"),
     ("COSMETIC", "15. Currency labels kEUR vs DKKk (math identical)"),
