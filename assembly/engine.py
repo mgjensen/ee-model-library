@@ -68,6 +68,7 @@ import modules.statements.SOURCES_USES_001 as SOURCES_USES_001
 import modules.revenue.PPA_CFD_001 as PPA_CFD_001
 import modules.checks.MODEL_CHECKS_001 as MODEL_CHECKS_001
 import modules.reporting.DASHBOARD_001 as DASHBOARD_001
+import modules.statements.DIV_001 as DIV_001
 
 
 # ============================================================================
@@ -193,6 +194,7 @@ class ProjectConfig(BaseModel):
     breakeven: Optional[BREAKEVEN_001.Inputs] = None  # BREAKEVEN_001
     model_checks: Optional[MODEL_CHECKS_001.Inputs] = None  # MODEL_CHECKS_001
     dashboard: Optional[DASHBOARD_001.Inputs] = None  # DASHBOARD_001
+    div: Optional[DIV_001.Inputs] = None  # DIV_001 — dividend distribution
     statements: StatementConfig = Field(default_factory=StatementConfig)
 
 
@@ -682,6 +684,45 @@ def run(config: ProjectConfig) -> AssemblyResult:
         out["CF_001"] = CF_001.calculate(cf_inputs)
 
     # ------------------------------------------------------------------
+    # Step 10.5: DIV_001 — dividend distribution (after CF_001, before BS_001)
+    # ------------------------------------------------------------------
+    dividends_computed: list[float] = []
+    if "CF_001" in out and "PL_001" in out and config.div is not None:
+        cf_out = out["CF_001"]
+        pl_out = out["PL_001"]
+        sc = config.statements
+        _cod_div = (config.constr_finance.cod_period if config.constr_finance
+                    else (config.capex.construction_start_period + config.capex.construction_periods
+                          if config.capex else 0))
+
+        div_inputs = DIV_001.Inputs(
+            periods=n,
+            start_year=tl.start_year,
+            start_month=tl.start_month,
+            cod_period=_cod_div,
+            net_income=pl_out.net_income,
+            closing_cash=cf_out.closing_cash,
+            opening_retained_earnings=sc.opening_retained_earnings_DKKk,
+            opening_contributed_equity=sc.opening_contributed_equity_DKKk,
+            payout_ratio=config.div.payout_ratio,
+            cash_reserve=config.div.cash_reserve,
+            payment_months=config.div.payment_months,
+            capital_reduction_active=config.div.capital_reduction_active,
+            capital_reduction_threshold=config.div.capital_reduction_threshold,
+        )
+        if config.div.ops_end_period is not None:
+            div_inputs = div_inputs.model_copy(update={"ops_end_period": config.div.ops_end_period})
+
+        out["DIV_001"] = DIV_001.calculate(div_inputs)
+        dividends_computed = out["DIV_001"].dividends_paid
+
+        # Re-run CF_001 with computed dividends
+        cf_inputs_with_div = cf_inputs.model_copy(update={
+            "dividends_paid": dividends_computed,
+        })
+        out["CF_001"] = CF_001.calculate(cf_inputs_with_div)
+
+    # ------------------------------------------------------------------
     # Step 11: BS_001 — balance sheet (fully wired)
     # ------------------------------------------------------------------
     if "CF_001" in out:
@@ -735,7 +776,9 @@ def run(config: ProjectConfig) -> AssemblyResult:
             ),
             net_income=pl_out.net_income,
         )
-        if sc.dividends_paid:
+        if dividends_computed:
+            bs_kwargs["dividends_paid"] = dividends_computed
+        elif sc.dividends_paid:
             bs_kwargs["dividends_paid"] = sc.dividends_paid
         out["BS_001"] = BS_001.calculate(BS_001.Inputs(**bs_kwargs))
 
