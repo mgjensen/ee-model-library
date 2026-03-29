@@ -452,8 +452,8 @@ gaps = [
     # FIXED: ("DEBT", "10. Margin step-ups") — DEBT_SCULPT_001 uses margin_rates + margin_step_years
     # FIXED: ("DEBT", "11. Revenue-weighted DSCR") — using PV 1.50x + BESS 1.80x streams
     # FIXED: ("DEBT", "12. Commitment fee") — CONSTR_FINANCE_001 has commitment_fee_rate, now wired into PL+CF
-    ("OPERATIONAL", "13. Pre-COD revenue not wired into Sources & Uses"),
-    ("OPERATIONAL", "14. Working capital: single-stream vs 4-stream receivables"),
+    # FIXED: ("OPERATIONAL", "13. Pre-COD revenue") — SOURCES_USES_001 has pre_completion_revenue_DKKk
+    # FIXED: ("OPERATIONAL", "14. Multi-stream WC") — WORKING_CAPITAL_001 accepts list[RevenueStream]
     ("COSMETIC", "15. Currency labels kEUR vs DKKk (math identical)"),
 ]
 for cat, desc in gaps:
