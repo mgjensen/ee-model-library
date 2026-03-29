@@ -620,7 +620,7 @@
     },
     "TAX_LT_001": {
         "module_id": "TAX_LT_001",
-        "version": "1.0",
+        "version": "1.1",
         "tier": "detailed",
         "markets": [
             "LT"
@@ -633,7 +633,7 @@
         ],
         "path": "modules/tax/TAX_LT_001.py",
         "created": "2026-03-18",
-        "modified": "2026-03-18"
+        "modified": "2026-03-29"
     },
     "BRIDGE_FACILITY_001": {
         "module_id": "BRIDGE_FACILITY_001",

@@ -10,6 +10,8 @@ from modules.tax.TAX_LT_001 import (
     _calculate_straight_line_depreciation,
     _calculate_thin_cap,
     _calculate_tax_with_loss_cf,
+    _apply_ebitda_cap,
+    _apply_shl_interest_limit,
 )
 
 
@@ -259,3 +261,166 @@ def test_excel_formulas():
                 "loss_offset", "tax_charge"):
         assert key in formulas
         assert formulas[key].startswith("=")
+
+
+# ---------------------------------------------------------------------------
+# EBITDA cap tests
+# ---------------------------------------------------------------------------
+
+def test_ebitda_cap_basic():
+    """30% EBITDA cap limits deductible interest."""
+    # EBITDA = 100,000; 30% = 30,000; interest = 50,000
+    # Deductible = max(floor=3000, 30000) = 30,000; non-ded = 20,000
+    ded, non_ded = _apply_ebitda_cap(
+        annual_deductible=[50_000.0],
+        annual_ebitda=[100_000.0],
+        ebitda_cap_pct=0.30,
+        floor_DKKk=3_000.0,
+    )
+    assert ded[0] == pytest.approx(30_000.0)
+    assert non_ded[0] == pytest.approx(20_000.0)
+
+
+def test_ebitda_cap_floor():
+    """Floor ensures minimum deductibility even with low EBITDA."""
+    # EBITDA = 5,000; 30% = 1,500; floor = 3,000
+    # Allowed = max(3000, 1500) = 3,000; interest = 4,000
+    ded, non_ded = _apply_ebitda_cap(
+        annual_deductible=[4_000.0],
+        annual_ebitda=[5_000.0],
+        ebitda_cap_pct=0.30,
+        floor_DKKk=3_000.0,
+    )
+    assert ded[0] == pytest.approx(3_000.0)
+    assert non_ded[0] == pytest.approx(1_000.0)
+
+
+def test_ebitda_cap_under_limit():
+    """Interest below cap is fully deductible."""
+    ded, non_ded = _apply_ebitda_cap(
+        annual_deductible=[10_000.0],
+        annual_ebitda=[100_000.0],
+        ebitda_cap_pct=0.30,
+        floor_DKKk=3_000.0,
+    )
+    assert ded[0] == pytest.approx(10_000.0)
+    assert non_ded[0] == pytest.approx(0.0)
+
+
+def test_ebitda_cap_negative_ebitda():
+    """Negative EBITDA falls back to floor."""
+    ded, non_ded = _apply_ebitda_cap(
+        annual_deductible=[5_000.0],
+        annual_ebitda=[-50_000.0],
+        ebitda_cap_pct=0.30,
+        floor_DKKk=3_000.0,
+    )
+    assert ded[0] == pytest.approx(3_000.0)
+    assert non_ded[0] == pytest.approx(2_000.0)
+
+
+def test_ebitda_cap_e2e():
+    """EBITDA cap reduces tax charge via higher non-deductible interest."""
+    # Without cap
+    out_no_cap = calculate(_make_inputs(
+        ebitda_annual=100_000.0, interest_annual=50_000.0, capex_year1=0.0,
+    ))
+    # With cap: 30% of 100k = 30k < 50k interest → 20k non-deductible
+    inp = _make_inputs(
+        ebitda_annual=100_000.0, interest_annual=50_000.0, capex_year1=0.0,
+    )
+    inp_capped = inp.model_copy(update={
+        "ebitda_cap_active": True,
+        "ebitda_cap_pct": 0.30,
+        "ebitda_cap_floor_DKKk": 3_000.0,
+    })
+    out_capped = calculate(inp_capped)
+    # With cap: less interest deducted → higher taxable → more tax
+    assert sum(out_capped.tax_charge_accrued) > sum(out_no_cap.tax_charge_accrued)
+    assert sum(out_capped.non_deductible_interest) > sum(out_no_cap.non_deductible_interest)
+
+
+# ---------------------------------------------------------------------------
+# SHL interest limit tests
+# ---------------------------------------------------------------------------
+
+def test_shl_interest_limit_basic():
+    """SHL interest capped at 3,000 kEUR p.a."""
+    adj, non_ded = _apply_shl_interest_limit(
+        annual_interest=[20_000.0],
+        annual_shl_interest=[10_000.0],
+        limit_DKKk=3_000.0,
+    )
+    # SHL: 10,000 → capped at 3,000; non-SHL: 10,000 unchanged
+    assert adj[0] == pytest.approx(10_000.0 + 3_000.0)
+    assert non_ded[0] == pytest.approx(7_000.0)
+
+
+def test_shl_interest_limit_under():
+    """SHL interest below limit is fully preserved."""
+    adj, non_ded = _apply_shl_interest_limit(
+        annual_interest=[5_000.0],
+        annual_shl_interest=[2_000.0],
+        limit_DKKk=3_000.0,
+    )
+    assert adj[0] == pytest.approx(5_000.0)
+    assert non_ded[0] == pytest.approx(0.0)
+
+
+def test_shl_interest_limit_e2e():
+    """SHL interest limit increases non-deductible interest in full calculation."""
+    n = 24
+    shl_interest = [500.0] * n  # 6,000/year > 3,000 limit
+    inp = _make_inputs(
+        periods=n, ebitda_annual=100_000.0,
+        interest_annual=12_000.0, capex_year1=0.0,
+    )
+    inp_lim = inp.model_copy(update={
+        "shl_interest_limit_active": True,
+        "shl_interest_limit_DKKk": 3_000.0,
+        "shl_interest_expense": shl_interest,
+    })
+    out = calculate(inp_lim)
+    # 6,000 SHL/yr → 3,000 non-ded/yr → non_ded_interest should be positive
+    assert sum(out.non_deductible_interest) > 0
+
+
+# ---------------------------------------------------------------------------
+# Unlevered tax tests
+# ---------------------------------------------------------------------------
+
+def test_unlevered_tax_exists():
+    """Outputs include unlevered_tax_charge_accrued."""
+    out = calculate(_make_inputs())
+    assert hasattr(out, "unlevered_tax_charge_accrued")
+    assert hasattr(out, "annual_unlevered_tax_charge")
+
+
+def test_unlevered_tax_higher():
+    """Unlevered tax >= levered tax (no interest benefit)."""
+    out = calculate(_make_inputs(
+        ebitda_annual=100_000.0, interest_annual=20_000.0, capex_year1=0.0,
+    ))
+    lev = sum(out.tax_charge_accrued)
+    unlev = sum(out.unlevered_tax_charge_accrued)
+    assert unlev >= lev - 0.01
+
+
+def test_unlevered_tax_equal_when_no_interest():
+    """With zero interest, levered == unlevered."""
+    out = calculate(_make_inputs(
+        ebitda_annual=100_000.0, interest_annual=0.0, capex_year1=0.0,
+    ))
+    lev = sum(out.tax_charge_accrued)
+    unlev = sum(out.unlevered_tax_charge_accrued)
+    assert unlev == pytest.approx(lev, rel=1e-6)
+
+
+def test_unlevered_tax_output_length():
+    """Unlevered outputs have correct lengths."""
+    n = 36
+    out = calculate(_make_inputs(periods=n))
+    assert len(out.unlevered_tax_charge_accrued) == n
+    # annual array: number of years spanned
+    yg = _year_groups(n, 2025, 1)
+    assert len(out.annual_unlevered_tax_charge) == len(yg)
