@@ -2,7 +2,7 @@
 
 Python module library for renewable energy project finance — European Energy A/S.
 
-**Version:** v0.011 | **Last pushed:** 2026-03-28 | **Tests:** 1173 passed | **Modules:** 38 | **Branch:** `main`
+**Version:** v0.012 | **Last pushed:** 2026-03-29 | **Tests:** 1173 passed | **Modules:** 38 | **Branch:** `main`
 
 ---
 
