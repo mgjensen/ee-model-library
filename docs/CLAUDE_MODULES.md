@@ -58,6 +58,7 @@ Read this file when working on module wiring, engine.py, or adding/modifying mod
 | `SOURCES_USES_001` | `modules/statements/SOURCES_USES_001.py` | Sources & uses during construction |
 | `VALUATION_001` | `modules/statements/VALUATION_001.py` | Enterprise valuation (DCF) |
 | `BREAKEVEN_001` | `modules/statements/BREAKEVEN_001.py` | Breakeven / sensitivity |
+| `DIV_001` | `modules/statements/DIV_001.py` | Dividend distribution + capital reduction (3-gate waterfall) |
 | `MODEL_CHECKS_001` | `modules/checks/MODEL_CHECKS_001.py` | BS balance, DSCR covenant, IS consistency |
 | `DASHBOARD_001` | `modules/reporting/DASHBOARD_001.py` | KPI dashboard |
 
@@ -74,6 +75,7 @@ Read this file when working on module wiring, engine.py, or adding/modifying mod
 | `assembly/perspectives.py` | Multi-perspective output (stubbed — not yet implemented) |
 | `assembly/scenario_runner.py` | Multi-scenario runner + portfolio aggregation + 2D sensitivity |
 | `assembly/scenario_engine.py` | Sensitivity engine + tornado charts + debt-resize mode |
+| `assembly/debt_solver.py` | Iterative sculpted debt sizing with convergence loop |
 
 ---
 

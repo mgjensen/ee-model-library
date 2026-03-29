@@ -4,13 +4,13 @@ Python library that assembles production-ready Excel financial models for renewa
 
 **Owner:** Martin Graa Jennum, European Energy A/S
 **Stack:** Python 3.11+, Pydantic v2, openpyxl, pytest, FastAPI (stubbed)
-**Currency:** DKKk throughout, except prices (DKK/MWh, EUR/MWh)
+**Currency:** Configurable via `TimelineConfig.currency_label` (default "kEUR"). Field names use `_DKKk` suffix for legacy compatibility.
 
 ## Architecture state: v1.x → v2.0
 
 The codebase is v1.x with per-type modules. A v2.0 generic architecture is planned.
 
-**CURRENT (v1.x):** 8 separate debt modules, 3 OPEX modules, 3 revenue modules. Module IDs use `_NNN` suffix (`DEBT_001`, `REV_001`). Files in `modules/debt/DEBT_001.py`, etc.
+**CURRENT (v1.x):** 12 debt modules, 5 cost modules, 4 revenue modules, 3 tax modules, 9 statement modules, 1 check, 1 reporting, 1 market, 1 core = 39 modules total. Module IDs use `_NNN` suffix (`DEBT_001`, `REV_001`). Files in `modules/debt/DEBT_001.py`, etc.
 **TARGET (v2.0):** 1 generic DEBT module, 1 generic OPEX module. Revenue and tax stay separate.
 
 **Rule:** Follow v1.x naming when editing existing code. Use v2.0 patterns only when Martin says "migrate" or "build generic." When in doubt, check imports in `engine.py`.
@@ -50,27 +50,33 @@ ee-model-library/
     excel_formatter.py            EE/F1F9 format standard (colors, borders, grouping, print)
     cover_writer.py               Cover sheet with perspective-aware KPI blocks
     parser.py                     Reads operator .xlsx
+    debt_solver.py                Iterative sculpted debt sizing convergence loop
     scenario_runner.py            Multi-scenario + portfolio aggregation
     scenario_engine.py            Sensitivity + tornado charts
   modules/
     core/WACC_001.py
     market/PRICE_CURVES_001.py
     revenue/REV_001.py REV_002.py REV_003.py PPA_CFD_001.py
-    costs/OPEX_001.py OPEX_002.py OPEX_003.py
+    costs/OPEX_001.py OPEX_002.py OPEX_003.py DECOM_PROVISION_001.py IMBALANCE_FEE_001.py
     capex/CAPEX_001.py BESS_REPOW_001.py
     debt/DEBT_001.py DEBT_SCULPT_001.py DEBT_LINEAR_001.py
          CONSTR_FINANCE_001.py SHL_001.py VAT_FACILITY_001.py
          DEBT_REFI_001.py REPOW_DEBT_001.py DSRA_001.py
-    tax/TAX_001.py TAX_DE_001.py
+         CASH_SWEEP_001.py BRIDGE_FACILITY_001.py MRA_001.py
+    tax/TAX_001.py TAX_DE_001.py TAX_LT_001.py
     statements/PL_001.py CF_001.py BS_001.py IRR_001.py
                WORKING_CAPITAL_001.py SOURCES_USES_001.py
-               VALUATION_001.py BREAKEVEN_001.py
+               VALUATION_001.py BREAKEVEN_001.py DIV_001.py
     checks/MODEL_CHECKS_001.py
     reporting/DASHBOARD_001.py
   registry/
     module_registry.json          Single source of truth for modules
     assumption_db/DK.json DE.json AU.json
-  tests/
+  calibration/
+    run_01_holmen_ii.py           Holmen II DK Hybrid calibration (Project IRR 3.92% vs 3.97%)
+    run_02_master_model.py        Master Model sculpted debt calibration (all 15 gaps closed)
+    holmen_ii_curves.json         Extracted Aurora revenue curves from reference model
+  tests/                          1208 automated tests
   scripts/smoke_test_format.py    Full-model smoke test for Excel output
   docs/
     CLAUDE_MODULES.md             Full module inventory + engine wiring
@@ -173,17 +179,24 @@ def calculate(inputs: Inputs) -> Outputs: ...
 def get_excel_formulas(refs: dict) -> dict: ...
 ```
 
-## Recent enhancements (UC Model Learnings, v0.008)
+## Recent enhancements (v0.008–v0.017)
 
-**REV_002** — Optional `rte_curve` and `capacity_curve` inputs (annual values). Override flat `round_trip_efficiency` with manufacturer degradation curves (e.g. CATL 20-year). Capacity curve scales discharge volume; RTE curve affects Section E GoO losses. Outputs: `effective_rte`, `effective_capacity_factor` per period.
+### UC Model Learnings (v0.008)
+- **REV_002**: Optional `rte_curve`/`capacity_curve` (CATL 20-year manufacturer degradation)
+- **DEBT_SCULPT_001**: Dual contracted/merchant DSCR + multi-constraint sculpting (P50/P99/breakeven)
+- **CASH_SWEEP_001**: DSCR-threshold-gated sweep
+- **PRICE_CURVES_001**: `strict_lookup` mode with available-names error messages
+- **AU.json**: Full Australian market assumptions from UC Hybrid FID
 
-**DEBT_SCULPT_001** — Dual contracted/merchant DSCR targets: `DSCRStream.merchant_dscr` + `merchant_start_period`. Banks use lower DSCR during PPA (1.25x) and higher during merchant tail (1.80x). Multi-constraint sculpting: `constraint_scenarios` input runs parallel P50/P99/breakeven passes, takes element-wise min principal, auto-sizes facility via bisection. Outputs: `binding_constraint`, `per_constraint_dscr`.
-
-**CASH_SWEEP_001** — DSCR-threshold-gated sweep: `dscr_threshold` + `dscr_monthly`. Sweep only fires when DSCR < threshold (e.g. 1.15x). Healthy periods retain cash for distribution.
-
-**PRICE_CURVES_001** — `strict_lookup` mode: missing curve names raise `ValueError` listing available curves. Supports named curve references (e.g. "MPP QLD - MESSY") for scenario decoupling.
-
-**AU.json** — Populated with real benchmarks from Upper Calliope PV & BESS Hybrid FID (QLD, Feb 2026). CATL RTE/capacity curves, tiered LTSA, DSCR targets (P50/P99), all AUD-denominated, every value source-tagged.
+### Calibration + Master Model (v0.009–v0.017)
+- **DIV_001** (NEW): Three-gate dividend distribution + capital reduction waterfall. Engine-wired between CF_001 and BS_001 with circularity handling.
+- **BS_001**: Retrofit opening balances (`opening_fixed_assets_gross`, `opening_accumulated_depreciation`, `opening_debt_balance`) + `equity_contributions` time series (replaces constant for greenfield projects)
+- **TAX_001**: Unlevered tax charge (`unlevered_tax_charge_accrued`) — no interest deductions, for Project IRR
+- **VALUATION_001 v1.1**: Buy-and-Sell EV (`sell_down_period`, `exit_discount_rate`) + incoming investor IRR
+- **IRR_001**: Adaptive bisection bounds for long-horizon models; equity IRR now uses holder's perspective (ECF = -equity + dividends)
+- **Engine wiring**: SHL PIK interest → PL/CF/BS; pre-COD IDC capitalisation (SHL + constr finance); SHL drawdowns in CFF; pure equity contributions in CFF; construction commitment fee in PL+CF
+- **debt_solver.py** (NEW): Iterative sculpted debt sizing with convergence loop
+- **Currency**: Configurable `currency_label` (default "kEUR") via `TimelineConfig`
 
 ## Common patterns
 
@@ -222,6 +235,8 @@ def get_excel_formulas(refs: dict) -> dict: ...
 | Market assumptions | `registry/assumption_db/XX.json` |
 | Module registry | `registry/module_registry.json` |
 | Scenario analysis | `assembly/scenario_runner.py`, `assembly/scenario_engine.py` |
+| Debt sizing solver | `assembly/debt_solver.py` — iterative sculpted debt convergence |
+| Calibration | `calibration/run_01_holmen_ii.py`, `calibration/run_02_master_model.py` |
 
 ## Progressive disclosure — read when needed
 
