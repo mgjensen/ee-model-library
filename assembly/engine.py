@@ -804,7 +804,24 @@ def run(config: ProjectConfig) -> AssemblyResult:
         sc = config.statements
 
         pfcf = [cf_out.cfo[p] + cf_out.cfi[p] for p in range(n)]
-        ecf  = cf_out.net_cash_flow
+
+        # Equity cash flow from the equity HOLDER's perspective:
+        # ECF = -equity_injection + dividends_received + capital_reduction
+        # Negative at start (money in), positive during ops (money back)
+        div_out = out.get("DIV_001")
+        shl_out_ecf = out.get("SHL_001")
+        if div_out and shl_out_ecf and config.shl and config.shl.equity_contributed:
+            shl_pct = config.shl.shl_pct_of_equity
+            ecf = [0.0] * n
+            for p in range(n):
+                # Equity injection (negative = cash out from holder)
+                eq_in = (1.0 - shl_pct) * config.shl.equity_contributed[p]
+                # Dividends received (positive = cash to holder)
+                div_p = div_out.dividends_paid[p]
+                cap_red = div_out.capital_reduction[p]
+                ecf[p] = -eq_in + div_p + cap_red
+        else:
+            ecf = cf_out.net_cash_flow
 
         proj_rate = (
             sc.project_discount_rate if sc.project_discount_rate is not None

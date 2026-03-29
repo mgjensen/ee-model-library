@@ -115,7 +115,7 @@ HEDGE_PCT = 0.75
 
 # SHL
 SHL_PCT = 0.80
-SHL_MARGIN = 0.0  # Zero SHL interest — any PIK makes ECF negative (architectural gap)
+SHL_MARGIN = 0.02  # 2% PIK — calibrated to allow positive NI for dividends
 EQUITY_INJECTION = CAPEX_TOTAL * (1 - LEVERAGE_CAP)  # 12,500 kEUR
 
 # Tax
