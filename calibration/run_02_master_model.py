@@ -53,6 +53,7 @@ import modules.debt.DEBT_SCULPT_001 as DEBT_SCULPT_001
 import modules.debt.CONSTR_FINANCE_001 as CONSTR_FINANCE_001
 import modules.debt.SHL_001 as SHL_001
 import modules.core.WACC_001 as WACC_001
+import modules.statements.DIV_001 as DIV_001
 
 # ============================================================================
 # CONSTANTS — Holsted-like DK Hybrid PV+BESS
@@ -114,7 +115,7 @@ HEDGE_PCT = 0.75
 
 # SHL
 SHL_PCT = 0.80
-SHL_MARGIN = 0.07
+SHL_MARGIN = 0.04  # Reduced from 7% to allow positive NI for dividend distribution
 EQUITY_INJECTION = CAPEX_TOTAL * (1 - LEVERAGE_CAP)  # 12,500 kEUR
 
 # Tax
@@ -266,8 +267,20 @@ try:
         tax=TaxConfig(country="DK"),
         statements=StatementConfig(
             opening_cash_DKKk=0.0,
-            opening_contributed_equity_DKKk=0.0,  # Equity flows through CFF drawdowns
+            opening_contributed_equity_DKKk=EQUITY_INJECTION,
+            opening_retained_earnings_DKKk=0.0,
             equity_discount_rate=EQUITY_DR,
+        ),
+        # Dividend distribution — three-gate waterfall via DIV_001
+        div=DIV_001.Inputs(
+            periods=N, start_year=START_YEAR, start_month=START_MONTH,
+            cod_period=BESS_COD_PERIOD,
+            net_income=[0.0] * N,      # placeholder — engine overwrites from PL_001
+            closing_cash=[0.0] * N,    # placeholder — engine overwrites from CF_001
+            payout_ratio=0.80,
+            cash_reserve=40.0,
+            payment_months=[6, 12],
+            capital_reduction_active=False,
         ),
     )
 
@@ -332,58 +345,15 @@ try:
         ),
     })
 
-    result_p2 = run(config_p2)
-    print(f"  Pass 2 complete — {len(result_p2.outputs)} modules")
+    # Pass 2 now includes DIV_001 automatically (engine handles it)
+    result = run(config_p2)
+    print(f"  Pass 2 complete — {len(result.outputs)} modules")
 
-    # ================================================================
-    # PASS 3: Add SHL repayment from distributable cash + dividends
-    # ================================================================
-    print("\nPass 3: distribution waterfall...")
-    cf_p2 = result_p2.outputs.get("CF_001")
-    shl_p2 = result_p2.outputs.get("SHL_001")
-
-    if cf_p2 and shl_p2:
-        ncf = cf_p2.net_cash_flow
-        closing_cash = cf_p2.closing_cash
-        shl_balance = list(shl_p2.closing_balance)
-        shl_repay_new = [0.0] * N
-        dividends = [0.0] * N
-        min_cash = 40.0
-        dist_start = BESS_COD_PERIOD + 12
-        pay_months = {6, 12}
-
-        for p in range(N):
-            cal_month = (START_MONTH - 1 + p) % 12 + 1
-            if p < dist_start or cal_month not in pay_months:
-                continue
-            available = max(0, closing_cash[p] - min_cash)
-            recent_ncf = sum(max(0, ncf[q]) for q in range(max(0, p - 5), p + 1))
-            distributable = min(available, recent_ncf)
-            if distributable <= 10:
-                continue
-            sbl = shl_balance[min(p, len(shl_balance) - 1)]
-            if sbl > 1.0:
-                shl_pay = min(distributable * 0.30, sbl)
-                shl_repay_new[p] = shl_pay
-                distributable -= shl_pay
-                for q in range(p, N):
-                    if q < len(shl_balance):
-                        shl_balance[q] = max(0, shl_balance[q] - shl_pay)
-            if distributable > 10:
-                dividends[p] = distributable * 0.35
-
-        print(f"  SHL repayments: {sum(shl_repay_new):,.0f} kEUR")
-        print(f"  Dividends: {sum(dividends):,.0f} kEUR")
-
-        config_p3 = config_p2.model_copy(update={
-            "project_name": "Master Model v1.0 — Pass 3 (with distributions)",
-            "shl": config_p2.shl.model_copy(update={"repayment_schedule": shl_repay_new}),
-            "statements": config_p2.statements.model_copy(update={"dividends_paid": dividends}),
-        })
-        result = run(config_p3)
-        print(f"  Pass 3 complete — {len(result.outputs)} modules")
-    else:
-        result = result_p2
+    div_out = result.outputs.get("DIV_001")
+    if div_out:
+        print(f"  DIV_001: dividends={div_out.total_dividends:,.0f} kEUR, "
+              f"cap_reduction={div_out.total_capital_reduction:,.0f} kEUR, "
+              f"periods={div_out.distribution_periods}")
 
 except Exception as e:
     print(f"ERROR: {e}")
@@ -504,8 +474,7 @@ print(f"\nResults saved to {results_path}")
 
 # Write workbook
 os.makedirs("outputs", exist_ok=True)
-final_config = config_p3 if 'config_p3' in dir() else config_p2
-write_workbook(result, final_config, "outputs/master_model_calibration_02.xlsx")
+write_workbook(result, config_p2, "outputs/master_model_calibration_02.xlsx")
 print(f"Workbook saved to outputs/master_model_calibration_02.xlsx")
 
 print("\n" + "=" * 60)

@@ -662,6 +662,11 @@ def run(config: ProjectConfig) -> AssemblyResult:
                 if new_shl > 0.001:
                     shl_draw[p] = new_shl
             cf_draw = _add_series(cf_draw or None, shl_draw, n=n)
+            # Pure equity portion (non-SHL): flows through CFF as equity injection
+            if config.shl and config.shl.equity_contributed:
+                shl_pct = config.shl.shl_pct_of_equity
+                pure_eq = [(1.0 - shl_pct) * config.shl.equity_contributed[p] for p in range(n)]
+                cf_draw = _add_series(cf_draw or None, pure_eq, n=n)
             # Cash interest (0 for PIK mode) flows through CFF interest_paid
             cf_int = [cf_int[p] + shl_out.interest_cash[p] for p in range(n)]
             # SHL repayments flow through CFF principal
