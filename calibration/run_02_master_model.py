@@ -336,8 +336,8 @@ try:
             swap_rate=SWAP_RATE,
             hedge_pct=HEDGE_PCT,
             reference_rate=BASE_RATE,
-            margin_rates=[MARGIN],
-            margin_step_years=[0],
+            margin_rates=[0.016, 0.014, 0.012],  # 3-period step-down
+            margin_step_years=[0, 5, 10],          # at COD, year 5, year 10
             leverage_cap_pct=LEVERAGE_CAP,
             total_capex_DKKk=CAPEX_TOTAL,
             construction_end_period=BESS_COD_PERIOD,
@@ -436,11 +436,11 @@ gaps = [
     ("STRUCTURAL", "3. No equity-first construction -- CONSTR_FINANCE_001 uses pro-rata"),
     # FIXED: ("STRUCTURAL", "4. No unlevered tax pass") — TAX_001 now computes both
     ("STRUCTURAL", "5. No full-engine debt sizing iteration -- two-pass workaround"),
-    ("STRUCTURAL", "6. No semi-annual payment frequency -- using monthly equivalent [6,12]"),
+    # FIXED: ("STRUCTURAL", "6. Semi-annual") — DEBT_SCULPT_001 uses payment_months=[6,12]
     ("VALUATION", "7. No Buy-and-Sell valuation / incoming investor IRR"),
     ("VALUATION", "8. No LLCR calculation (module has it but not calibrated)"),
     ("DEBT", "9. No DSRF module"),
-    ("DEBT", "10. No 3-period margin step-ups (using flat margin)"),
+    # FIXED: ("DEBT", "10. Margin step-ups") — DEBT_SCULPT_001 uses margin_rates + margin_step_years
     ("DEBT", "11. No revenue-weighted 4-stream DSCR (using single 1.50x)"),
     ("DEBT", "12. No commitment fee on undrawn construction facility"),
     ("OPERATIONAL", "13. Pre-COD revenue not wired into Sources & Uses"),

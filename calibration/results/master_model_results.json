@@ -21,9 +21,9 @@
   "actuals": {
     "project_irr": 0.060968354221216936,
     "equity_irr": 0.14511652916263884,
-    "sculpted_facility": 27806.557005125014,
-    "gearing": 0.5561311401025003,
-    "min_dscr": 1.4999999999999996,
+    "sculpted_facility": 28029.11995742024,
+    "gearing": 0.5605823991484048,
+    "min_dscr": 1.4999999999999998,
     "bs_max_imbalance": 160.41666666670062
   },
   "gaps": [
@@ -41,15 +41,7 @@
     },
     {
       "category": "STRUCTURAL",
-      "description": "4. No unlevered tax pass -- Project IRR uses levered tax (~0.3pp overstate)"
-    },
-    {
-      "category": "STRUCTURAL",
       "description": "5. No full-engine debt sizing iteration -- two-pass workaround"
-    },
-    {
-      "category": "STRUCTURAL",
-      "description": "6. No semi-annual payment frequency -- using monthly equivalent [6,12]"
     },
     {
       "category": "VALUATION",
@@ -62,10 +54,6 @@
     {
       "category": "DEBT",
       "description": "9. No DSRF module"
-    },
-    {
-      "category": "DEBT",
-      "description": "10. No 3-period margin step-ups (using flat margin)"
     },
     {
       "category": "DEBT",
