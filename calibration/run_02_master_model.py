@@ -446,7 +446,7 @@ gaps = [
     # FIXED: ("STRUCTURAL", "4. No unlevered tax pass") — TAX_001 now computes both
     ("STRUCTURAL", "5. No full-engine debt sizing iteration -- two-pass workaround"),
     # FIXED: ("STRUCTURAL", "6. Semi-annual") — DEBT_SCULPT_001 uses payment_months=[6,12]
-    ("VALUATION", "7. No Buy-and-Sell valuation / incoming investor IRR"),
+    # FIXED: ("VALUATION", "7. Buy-and-Sell") — VALUATION_001 v1.1 has sell_down_period + incoming investor IRR
     # FIXED: ("VALUATION", "8. LLCR") — DEBT_SCULPT_001 has llcr_series + min_llcr
     # FIXED: ("DEBT", "9. DSRF") — DSRA_001 mode="facility" supports DSRF (LC commitment fee)
     # FIXED: ("DEBT", "10. Margin step-ups") — DEBT_SCULPT_001 uses margin_rates + margin_step_years

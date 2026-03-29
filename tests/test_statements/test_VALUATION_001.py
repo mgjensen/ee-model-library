@@ -1,5 +1,6 @@
 """Tests for VALUATION_001 — EV bridge / purchase price calculation."""
 
+import math
 import pytest
 from modules.statements.VALUATION_001 import Inputs, Outputs, calculate
 
@@ -143,3 +144,92 @@ def test_high_discount_rate_lowers_ev():
     out_low = calculate(_base_inputs(periods=120, fcf=fcf, discount_rate=0.05))
     out_high = calculate(_base_inputs(periods=120, fcf=fcf, discount_rate=0.15))
     assert out_high.ev < out_low.ev
+
+
+# ============================================================================
+# BUY-AND-SELL + INCOMING INVESTOR IRR
+# ============================================================================
+
+def test_buy_and_sell_terminal_value():
+    """Sell-down at year 10 produces a terminal value."""
+    out = calculate(Inputs(
+        periods=240, start_year=2026, start_month=1,
+        closing_period=0, discount_rate=0.08,
+        capacity_mw=50.0,
+        fcf_monthly=[100.0] * 240,
+        sell_down_period=120,  # year 10
+    ))
+    assert out.sell_down_ev > 0
+    assert out.buy_and_sell_ev > 0
+
+
+def test_buy_and_sell_ev_less_than_buy_and_hold():
+    """Buy-and-Sell with same exit rate ≈ Buy-and-Hold (should be close)."""
+    out = calculate(Inputs(
+        periods=240, start_year=2026, start_month=1,
+        closing_period=0, discount_rate=0.08,
+        capacity_mw=50.0,
+        fcf_monthly=[100.0] * 240,
+        sell_down_period=120,
+    ))
+    # Same discount rate → Buy-and-Sell ≈ Buy-and-Hold
+    assert abs(out.buy_and_sell_ev - out.ev) / out.ev < 0.01
+
+
+def test_buy_and_sell_with_compressed_exit():
+    """Lower exit rate increases terminal value → higher Buy-and-Sell EV."""
+    out_same = calculate(Inputs(
+        periods=240, start_year=2026, start_month=1,
+        closing_period=0, discount_rate=0.08,
+        capacity_mw=50.0,
+        fcf_monthly=[100.0] * 240,
+        sell_down_period=120,
+        exit_discount_rate=0.08,
+    ))
+    out_compressed = calculate(Inputs(
+        periods=240, start_year=2026, start_month=1,
+        closing_period=0, discount_rate=0.08,
+        capacity_mw=50.0,
+        fcf_monthly=[100.0] * 240,
+        sell_down_period=120,
+        exit_discount_rate=0.06,  # lower → higher TV
+    ))
+    assert out_compressed.buy_and_sell_ev > out_same.buy_and_sell_ev
+
+
+def test_no_sell_down_equals_buy_and_hold():
+    """Without sell_down_period, Buy-and-Sell = Buy-and-Hold."""
+    out = calculate(Inputs(
+        periods=120, start_year=2026, start_month=1,
+        closing_period=0, discount_rate=0.08,
+        capacity_mw=50.0,
+        fcf_monthly=[100.0] * 120,
+    ))
+    assert abs(out.buy_and_sell_ev - out.ev) < 0.01
+    assert out.sell_down_ev == 0
+
+
+def test_incoming_investor_irr_positive():
+    """Incoming investor IRR computed from equity cash flows."""
+    n = 120
+    ecf = [-1000.0] + [50.0] * (n - 1)
+    out = calculate(Inputs(
+        periods=n, start_year=2026, start_month=1,
+        closing_period=0, discount_rate=0.08,
+        capacity_mw=50.0,
+        fcf_monthly=[100.0] * n,
+        equity_cash_flow=ecf,
+    ))
+    assert not math.isnan(out.incoming_investor_irr)
+    assert 0.01 < out.incoming_investor_irr < 1.0
+
+
+def test_incoming_investor_irr_nan_without_ecf():
+    """No equity_cash_flow → nan IRR."""
+    out = calculate(Inputs(
+        periods=120, start_year=2026, start_month=1,
+        closing_period=0, discount_rate=0.08,
+        capacity_mw=50.0,
+        fcf_monthly=[100.0] * 120,
+    ))
+    assert math.isnan(out.incoming_investor_irr)
