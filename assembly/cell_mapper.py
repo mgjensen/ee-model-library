@@ -95,6 +95,7 @@ MODULE_SHEET: dict[str, str] = {
     "REPOW_DEBT_001": "Debt",
     "VALUATION_001": "Statements",
     "BREAKEVEN_001": "Statements",
+    "DIV_001": "Statements",
     "CASH_SWEEP_001": "Debt",
     "BRIDGE_FACILITY_001": "Debt",
     "MRA_001": "Debt",
@@ -403,6 +404,12 @@ ROW_MAP: dict[tuple[str, str, str], int] = {
 
     # ---- Statements sheet — BREAKEVEN_001 (row 58) ---------------------------
     ("Statements", "BREAKEVEN_001", "breakeven_price_monthly"):  58,
+
+    # ---- Statements — DIV_001 (rows 60–63) ----------------------------------
+    ("Statements", "DIV_001", "dividends_paid"):        60,
+    ("Statements", "DIV_001", "capital_reduction"):     61,
+    ("Statements", "DIV_001", "total_distribution"):    62,
+    ("Statements", "DIV_001", "retained_earnings"):     63,
 
     # ---- Debt sheet — REPOW_DEBT_001 (rows 99–105) --------------------------
     ("Debt", "REPOW_DEBT_001", "opening_balance"):   99,
