@@ -88,18 +88,16 @@ def _extract_kpis(result: Any) -> dict:
     for debt_id in ("DEBT_SCULPT_001", "DEBT_001"):
         d = out.get(debt_id)
         if d:
-            kpis["senior_debt"] = d.total_debt
-            kpis["gearing"] = d.gearing
-            if hasattr(d, "min_dscr"):
-                kpis["min_dscr"] = d.min_dscr
-            if hasattr(d, "min_dscr_6m"):
-                kpis["min_dscr_6m"] = d.min_dscr_6m
-            if hasattr(d, "min_dscr_12m"):
-                kpis["min_dscr_12m"] = d.min_dscr_12m
-            if hasattr(d, "min_llcr"):
-                kpis["min_llcr"] = d.min_llcr
-            if hasattr(d, "fully_repaid"):
-                kpis["fully_repaid"] = d.fully_repaid
+            kpis["senior_debt"] = getattr(d, "total_debt", None) or getattr(d, "facility", None)
+            if hasattr(d, "gearing"):
+                kpis["gearing"] = d.gearing
+            for attr in ("min_dscr", "min_dscr_6m", "min_dscr_12m", "min_llcr", "fully_repaid"):
+                if hasattr(d, attr):
+                    kpis[attr] = getattr(d, attr)
+            if hasattr(d, "interest"):
+                kpis["total_interest"] = sum(d.interest)
+            elif hasattr(d, "total_interest"):
+                kpis["total_interest"] = d.total_interest
             break
 
     # Revenue
