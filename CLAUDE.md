@@ -73,10 +73,14 @@ ee-model-library/
     module_registry.json          Single source of truth for modules
     assumption_db/DK.json DE.json AU.json
   calibration/
-    run_01_holmen_ii.py           Holmen II DK Hybrid calibration (Project IRR 3.92% vs 3.97%)
-    run_02_master_model.py        Master Model sculpted debt calibration (all 15 gaps closed)
+    deal_db.py                    Deal database utility — save_to_deal_db()
+    deal_db.json                  4 calibrated deals
+    run_01_holmen_ii.py           Holmen II DK Hybrid (PV+BESS, 3 linear debt facilities)
+    run_02_master_model.py        Master Model DK Hybrid (sculpted debt, all 15 gaps closed)
+    run_03_skuodas.py             Skuodas LT Wind+Solar (7/7 KPIs, EBITDA cap, SHL limit)
+    run_04_viuf.py                Viuf DK PV+BESS (EY-reviewed, external BESS dispatch)
     holmen_ii_curves.json         Extracted Aurora revenue curves from reference model
-  tests/                          1208 automated tests
+  tests/                          1220 automated tests
   scripts/smoke_test_format.py    Full-model smoke test for Excel output
   docs/
     CLAUDE_MODULES.md             Full module inventory + engine wiring
@@ -198,6 +202,17 @@ def get_excel_formulas(refs: dict) -> dict: ...
 - **debt_solver.py** (NEW): Iterative sculpted debt sizing with convergence loop
 - **Currency**: Configurable `currency_label` (default "kEUR") via `TimelineConfig`
 
+### Engine wiring + calibration (v0.018)
+- **Engine**: DEBT_SCULPT_001 interest/drawdown/principal/closing_balance fully wired into PL/CF/BS
+- **Engine**: TAX_LT_001 auto-wired (ebitda, interest, capex from upstream) + fallback chain for PL/CF/BS/IRR
+- **Engine**: PFCF adds back cash interest only (SHL PIK excluded to avoid double-count)
+- **Engine**: DIV_001 receives PIK-adjusted net_income; DSRA auto-wires from DEBT_SCULPT_001
+- **TAX_LT_001 v1.1**: EBITDA cap (30% + floor), SHL interest limit (annual cap), unlevered tax output
+- **DEBT_SCULPT_001**: DSCR lookback aligned to SA period boundaries (fixes cross-period misalignment)
+- **Deal DB** (NEW): `calibration/deal_db.py` — `save_to_deal_db()` auto-extracts scalars + KPIs, appends to JSON
+- **Calibration run_03**: Skuodas LT Wind+Solar — 7/7 KPIs pass, 11 gaps resolved
+- **Calibration run_04**: Viuf DK PV+BESS (EY-reviewed) — BESS as external dispatch, SHL multi-tranche
+
 ## Common patterns
 
 **Inflation:** `factor = start_factor * (1 + rate) ** max(0, year - start_year)`
@@ -236,7 +251,8 @@ def get_excel_formulas(refs: dict) -> dict: ...
 | Module registry | `registry/module_registry.json` |
 | Scenario analysis | `assembly/scenario_runner.py`, `assembly/scenario_engine.py` |
 | Debt sizing solver | `assembly/debt_solver.py` — iterative sculpted debt convergence |
-| Calibration | `calibration/run_01_holmen_ii.py`, `calibration/run_02_master_model.py` |
+| Calibration | `calibration/run_01_holmen_ii.py` through `run_04_viuf.py` |
+| Deal database | `calibration/deal_db.py` — `save_to_deal_db()`, `calibration/deal_db.json` |
 
 ## Progressive disclosure — read when needed
 

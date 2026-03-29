@@ -1,0 +1,76 @@
+{
+  "run": "viuf_calibration_04",
+  "date": "2026-03-29",
+  "project": "Viuf PV+BESS (DK1)",
+  "modules_run": [
+    "REV_001",
+    "REV_002",
+    "OPEX_001",
+    "OPEX_002",
+    "CAPEX_001",
+    "DEBT_001",
+    "SHL_001",
+    "TAX_001",
+    "PL_001",
+    "CF_001",
+    "DIV_001",
+    "BS_001",
+    "IRR_001"
+  ],
+  "actuals": {
+    "total_revenue": 7154906.052865264,
+    "pv_revenue": 5068742.637091147,
+    "bess_revenue": 2086163.415774117,
+    "total_opex": 1246467.8204436796,
+    "ebitda": 5908438.232421584,
+    "total_dividends": 3168928.4176595737,
+    "tax_paid": 903835.1183531414,
+    "debt_interest": 321693.75,
+    "shl_interest": 490664.20000000007
+  },
+  "targets": {
+    "EBITDA": [
+      5776673.7,
+      6012456.3
+    ],
+    "Total revenue": [
+      6975028.4799999995,
+      7259723.5200000005
+    ],
+    "Total OPEX": [
+      1198354.78,
+      1247267.22
+    ],
+    "Dividends": [
+      3162672.55,
+      3495585.45
+    ],
+    "Tax paid": [
+      646271.15,
+      950398.75
+    ]
+  },
+  "gaps": [
+    {
+      "category": "REVENUE",
+      "description": "PV revenue uses calibrated monthly curves, not actual DK1 capture prices"
+    },
+    {
+      "category": "REVENUE",
+      "description": "BESS revenue uses inflated monthly proxy, not actual dispatch schedule"
+    },
+    {
+      "category": "OPEX",
+      "description": "OPEX split into generic buckets, not actual line items"
+    },
+    {
+      "category": "TAX",
+      "description": "DK 60% partial loss offset inflates lifetime tax vs deal model (+19%)"
+    },
+    {
+      "category": "DIVIDEND",
+      "description": "Opening retained earnings bootstrapped for NI-gated dividend distribution"
+    }
+  ],
+  "warnings": []
+}

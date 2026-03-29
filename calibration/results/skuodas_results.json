@@ -1,0 +1,75 @@
+{
+  "run": "skuodas_calibration_03",
+  "date": "2026-03-29",
+  "project": "Skuodas Hybrid Wind+Solar (LT)",
+  "modules_run": [
+    "WACC_001",
+    "REV_001",
+    "REV_003",
+    "OPEX_001",
+    "OPEX_003",
+    "CAPEX_001",
+    "CONSTR_FINANCE_001",
+    "DEBT_SCULPT_001",
+    "SHL_001",
+    "DSRA_001",
+    "TAX_LT_001",
+    "PL_001",
+    "CF_001",
+    "DIV_001",
+    "BS_001",
+    "IRR_001"
+  ],
+  "actuals": {
+    "project_irr": 0.08853675695626739,
+    "equity_irr": 0.11771312942421419,
+    "sculpted_facility": 276847.69,
+    "gearing": 0.695,
+    "min_dscr_6m": 1.45,
+    "min_dscr_12m": 1.4499999999999997,
+    "total_revenue": 2210320.8332070066,
+    "total_opex": 540831.798755865,
+    "bs_max_imbalance": 430563.3662429711
+  },
+  "targets": {
+    "Project IRR": [
+      0.08779999999999999,
+      0.0978
+    ],
+    "Equity IRR": [
+      0.112,
+      0.132
+    ],
+    "Senior debt": [
+      270868.0,
+      280868.0
+    ],
+    "Min DSCR 6m": [
+      1.3699999999999999,
+      1.47
+    ],
+    "Min DSCR 12m": [
+      1.4,
+      1.5
+    ],
+    "Total revenue": [
+      2107100.0,
+      2328900.0
+    ],
+    "Total OPEX": [
+      513950.0,
+      568050.0
+    ]
+  },
+  "gaps": [],
+  "warnings": [],
+  "solver": {
+    "iterations": 2,
+    "converged": true,
+    "final_delta": 0.0,
+    "facility_history": [
+      276847.69,
+      276847.69
+    ]
+  }
+}

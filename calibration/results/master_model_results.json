@@ -19,12 +19,12 @@
     "IRR_001"
   ],
   "actuals": {
-    "project_irr": 0.06077693696294073,
-    "equity_irr": 0.14484205434601982,
+    "project_irr": 0.06130581375865818,
+    "equity_irr": 0.12875324414530032,
     "sculpted_facility": 37500.0,
     "gearing": 0.75,
     "min_dscr": 1.6499999999999997,
-    "bs_max_imbalance": 247.91666666670062
+    "bs_max_imbalance": 8894.382196692888
   },
   "gaps": [
     {
@@ -38,10 +38,6 @@
     {
       "category": "STRUCTURAL",
       "description": "3. No equity-first construction -- CONSTR_FINANCE_001 uses pro-rata"
-    },
-    {
-      "category": "COSMETIC",
-      "description": "15. Currency labels kEUR vs DKKk (math identical)"
     }
   ],
   "warnings": []

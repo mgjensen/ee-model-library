@@ -2,7 +2,7 @@
 
 Python module library for renewable energy project finance — European Energy A/S.
 
-**Version:** v0.017 | **Last pushed:** 2026-03-29 | **Tests:** 1208 passed | **Modules:** 39 | **Branch:** `main`
+**Version:** v0.018 | **Last pushed:** 2026-03-29 | **Tests:** 1220 passed | **Modules:** 39 | **Branch:** `main`
 
 ---
 
@@ -29,7 +29,7 @@ The assembly engine runs all enabled modules in dependency order and produces a 
 ee-model-library/
   api/                        FastAPI app (POST /run, GET /modules, GET /health)
   assembly/
-    engine.py                 Orchestration — runs 38 modules in dependency order
+    engine.py                 Orchestration — runs 39 modules in dependency order
     cell_mapper.py            Row/column layout, column constants, SUBSECTION_LABELS
     excel_writer.py           openpyxl writer — 7-sheet .xlsx with formula layer
     excel_formatter.py        EE/F1F9 format standard (colors, borders, grouping, print)
@@ -52,9 +52,16 @@ ee-model-library/
     checks/                   MODEL_CHECKS_001
     reporting/                DASHBOARD_001
   registry/
-    module_registry.json      Module index (38 modules, with created/modified dates)
+    module_registry.json      Module index (39 modules, with created/modified dates)
     assumption_db/            Market assumptions (DK.json, DE.json, AU.json)
-  tests/                      1131 automated tests
+  calibration/
+    deal_db.py                Deal database utility — auto-extracts KPIs + assumptions
+    deal_db.json              4 calibrated deals (Holmen II, Master Model, Skuodas, Viuf)
+    run_01_holmen_ii.py       Holmen II DK Hybrid (PV+BESS) calibration
+    run_02_master_model.py    Master Model DK Hybrid (sculpted debt) calibration
+    run_03_skuodas.py         Skuodas LT Hybrid (Wind+Solar) calibration
+    run_04_viuf.py            Viuf DK PV+BESS (EY-reviewed) calibration
+  tests/                      1220 automated tests
   docs/
     CLAUDE_MODULES.md         Full module inventory + engine wiring
     CLAUDE_SCHEMAS.md         ProjectConfig, Excel spec, assumption DB schemas
@@ -94,10 +101,10 @@ ee-model-library/
 | CAPEX | CAPEX_001, BESS_REPOW_001 | 2 |
 | Debt | DEBT_001, DEBT_SCULPT_001, DEBT_LINEAR_001, DEBT_REFI_001, CONSTR_FINANCE_001, SHL_001, VAT_FACILITY_001, DSRA_001, REPOW_DEBT_001, CASH_SWEEP_001, BRIDGE_FACILITY_001, MRA_001 | 12 |
 | Tax | TAX_001 (DK), TAX_DE_001 (DE), TAX_LT_001 (LT) | 3 |
-| Statements | PL_001, CF_001, BS_001, IRR_001, WORKING_CAPITAL_001, SOURCES_USES_001, VALUATION_001, BREAKEVEN_001 | 8 |
+| Statements | PL_001, CF_001, BS_001, IRR_001, WORKING_CAPITAL_001, SOURCES_USES_001, VALUATION_001, BREAKEVEN_001, DIV_001 | 9 |
 | Checks | MODEL_CHECKS_001 | 1 |
 | Reporting | DASHBOARD_001 | 1 |
-| **Total** | | **38** |
+| **Total** | | **39** |
 
 ---
 
@@ -144,16 +151,29 @@ write_workbook(result, config, "output/My_PV_Project.xlsx")
 
 ---
 
-## Recent Changes (v0.008 — UC Model Learnings)
+## Calibration
 
-| Module | Enhancement | Source |
-|--------|-------------|--------|
-| REV_002 | BESS degradation curves (`rte_curve`, `capacity_curve`) — CATL 20-year manufacturer data | UC Hybrid FID |
-| DEBT_SCULPT_001 | Dual contracted/merchant DSCR targets (1.25x PPA / 1.80x merchant) | UC Financing.Calc |
-| DEBT_SCULPT_001 | Multi-constraint sculpting (P50/P99/breakeven parallel passes, min principal) | UC Financing.Calc |
-| CASH_SWEEP_001 | DSCR-threshold-gated sweep (only fires when DSCR < 1.15x) | UC Financing.Calc |
-| PRICE_CURVES_001 | Strict named curve lookup with available-names error messages | UC curve naming |
-| AU.json | Full Australian market assumptions — CAPEX, debt, tax, OPEX, CATL curves | Upper Calliope QLD |
+4 calibrated deals across 3 markets, stored in `calibration/deal_db.json`:
+
+| Run | Deal | Market | Technology | Key KPIs |
+|-----|------|--------|------------|----------|
+| 01 | Holmen II | DK | PV+BESS | Project IRR 3.92%, 3 linear debt facilities |
+| 02 | Master Model | DK | Hybrid | Sculpted debt, iterative sizing, 15 gaps closed |
+| 03 | Skuodas | LT | Wind+Solar | IRR 8.85%, DSCR 1.45x, EBITDA cap, 7/7 KPIs pass |
+| 04 | Viuf | DK | PV+BESS | EBITDA 5,908k, revenue 7,155k, EY-reviewed |
+
+## Recent Changes (v0.018 — Sessions 12-14)
+
+| Change | Detail |
+|--------|--------|
+| **Engine wiring** | DEBT_SCULPT_001 + TAX_LT_001 fully wired into PL/CF/BS/IRR |
+| **TAX_LT_001 v1.1** | EBITDA cap (30%), SHL interest limit, unlevered tax output |
+| **DEBT_SCULPT_001** | DSCR lookback aligned to SA period boundaries |
+| **PFCF** | Unlevered Project IRR adds back cash interest (excl SHL PIK) |
+| **DIV_001** | PIK addback to net_income for non-cash SHL interest |
+| **DSRA_001** | Auto-wires debt_service from DEBT_SCULPT_001 |
+| **Deal DB** | `save_to_deal_db()` utility — auto-extracts scalars + KPIs |
+| **Viuf calibration** | EY-reviewed DK PV+BESS, BESS as external dispatch input |
 
 ---
 
