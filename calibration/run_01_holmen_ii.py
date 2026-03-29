@@ -557,6 +557,13 @@ os.makedirs("outputs", exist_ok=True)
 write_workbook(result, config, "outputs/holmen_ii_calibration_01.xlsx")
 print(f"Workbook saved to outputs/holmen_ii_calibration_01.xlsx")
 
+# Deal DB
+from calibration.deal_db import save_to_deal_db
+save_to_deal_db(
+    "Holmen II", config, result, targets=TARGETS,
+    metadata={"source_model": "251117_DK_BESS_FID_model_v4_38_Sebu_Holmen_II", "run": "01"},
+)
+
 # Final summary
 print("\n" + "=" * 60)
 kpi_mm = [m for m in mismatches if m.get("kpi") != "GAP"]

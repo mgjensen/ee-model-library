@@ -619,6 +619,13 @@ os.makedirs("outputs", exist_ok=True)
 write_workbook(result, config_final, "outputs/skuodas_calibration_03.xlsx")
 print(f"Workbook saved to outputs/skuodas_calibration_03.xlsx")
 
+# Deal DB
+from calibration.deal_db import save_to_deal_db
+save_to_deal_db(
+    "Skuodas Hybrid Wind+Solar", config_final, result, targets=TARGETS,
+    metadata={"source_model": "Skuodas FID Case 6 Nordex 175 P50", "run": "03"},
+)
+
 print("\n" + "=" * 60)
 print(f"ALL CHECKS: {'PASS' if checks_pass else 'FAIL'}")
 print(f"KNOWN GAPS: {len(gaps)}")

@@ -459,6 +459,13 @@ os.makedirs("outputs", exist_ok=True)
 write_workbook(result, config_p2, "outputs/master_model_calibration_02.xlsx")
 print(f"Workbook saved to outputs/master_model_calibration_02.xlsx")
 
+# Deal DB
+from calibration.deal_db import save_to_deal_db
+save_to_deal_db(
+    "Master Model v1.0", config_p2, result, targets=TARGETS,
+    metadata={"source_model": "Roberto Master Model v1.0", "run": "02"},
+)
+
 print("\n" + "=" * 60)
 print(f"ALL CHECKS: {'PASS' if checks_pass else 'FAIL'}")
 print(f"KNOWN GAPS: {len(gaps)}")
