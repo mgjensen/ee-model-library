@@ -21,9 +21,9 @@
   "actuals": {
     "project_irr": 0.060968354221216936,
     "equity_irr": 0.14511652916263884,
-    "sculpted_facility": 28029.11995742024,
-    "gearing": 0.5605823991484048,
-    "min_dscr": 1.4999999999999998,
+    "sculpted_facility": 26063.20346990442,
+    "gearing": 0.5212640693980884,
+    "min_dscr": 1.6799999999999997,
     "bs_max_imbalance": 160.41666666670062
   },
   "gaps": [
@@ -48,16 +48,8 @@
       "description": "7. No Buy-and-Sell valuation / incoming investor IRR"
     },
     {
-      "category": "VALUATION",
-      "description": "8. No LLCR calculation (module has it but not calibrated)"
-    },
-    {
       "category": "DEBT",
       "description": "9. No DSRF module"
-    },
-    {
-      "category": "DEBT",
-      "description": "11. No revenue-weighted 4-stream DSCR (using single 1.50x)"
     },
     {
       "category": "DEBT",

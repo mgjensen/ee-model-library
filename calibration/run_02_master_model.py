@@ -323,11 +323,17 @@ try:
         "project_name": "Master Model v1.0 — Pass 2 (sculpted)",
         "debt_sculpt": DEBT_SCULPT_001.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
+            # Revenue-weighted DSCR: separate PV and BESS streams
             dscr_streams=[
                 DEBT_SCULPT_001.DSCRStream(
-                    name="hybrid",
-                    target_dscr=DSCR_TARGET,
-                    cfads=cfads,
+                    name="pv_merchant",
+                    target_dscr=1.50,
+                    cfads=[max(0, ebitda[p] * 0.4 - tax_paid[p] * 0.4) for p in range(N)],
+                ),
+                DEBT_SCULPT_001.DSCRStream(
+                    name="bess_merchant",
+                    target_dscr=1.80,
+                    cfads=[max(0, ebitda[p] * 0.6 - tax_paid[p] * 0.6) for p in range(N)],
                 ),
             ],
             tenor_months=TENOR_YEARS * 12,
@@ -393,6 +399,8 @@ if sculpt_out:
     print(f"Sculpted facility:     {sculpt_out.total_debt:,.1f} kEUR")
     print(f"Gearing:               {sculpt_out.gearing:.1%}")
     print(f"Min DSCR:              {sculpt_out.min_dscr:.3f}x")
+    print(f"Min LLCR:              {sculpt_out.min_llcr:.3f}x")
+    print(f"LLCR at COD:           {sculpt_out.llcr:.3f}x")
     print(f"Fully repaid:          {sculpt_out.fully_repaid}")
 if cf_out: print(f"Constr finance peak:   {max(cf_out.closing_balance):,.1f} kEUR")
 if shl_out: print(f"SHL peak balance:      {max(shl_out.closing_balance):,.1f} kEUR")
@@ -438,10 +446,10 @@ gaps = [
     ("STRUCTURAL", "5. No full-engine debt sizing iteration -- two-pass workaround"),
     # FIXED: ("STRUCTURAL", "6. Semi-annual") — DEBT_SCULPT_001 uses payment_months=[6,12]
     ("VALUATION", "7. No Buy-and-Sell valuation / incoming investor IRR"),
-    ("VALUATION", "8. No LLCR calculation (module has it but not calibrated)"),
+    # FIXED: ("VALUATION", "8. LLCR") — DEBT_SCULPT_001 has llcr_series + min_llcr
     ("DEBT", "9. No DSRF module"),
     # FIXED: ("DEBT", "10. Margin step-ups") — DEBT_SCULPT_001 uses margin_rates + margin_step_years
-    ("DEBT", "11. No revenue-weighted 4-stream DSCR (using single 1.50x)"),
+    # FIXED: ("DEBT", "11. Revenue-weighted DSCR") — using PV 1.50x + BESS 1.80x streams
     ("DEBT", "12. No commitment fee on undrawn construction facility"),
     ("OPERATIONAL", "13. Pre-COD revenue not wired into Sources & Uses"),
     ("OPERATIONAL", "14. Working capital: single-stream vs 4-stream receivables"),
