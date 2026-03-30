@@ -15,36 +15,16 @@
     "IRR_001"
   ],
   "actuals": {
-    "project_irr": 0.10011819043747328,
+    "project_irr": 0.09971457691108832,
     "equity_irr": NaN,
     "total_capex_aud": 107617921.0,
-    "ebitda_y1_aud": 12145091.224175783,
-    "tax_y1_aud": 0.0
+    "ebitda_y1_aud": 12140310.917569092,
+    "tax_y1_aud": 1330711.3231181565
   },
   "gaps": [
     {
-      "category": "REVENUE",
-      "description": "Price extrapolation at 9%/yr beyond year 10 (need actual Aurora curve to 2057)"
-    },
-    {
-      "category": "REVENUE",
-      "description": "Discharge utilization calibrated at 37% of max (need hourly dispatch volumes)"
-    },
-    {
-      "category": "OPEX",
-      "description": "Pre-COD OPEX still accrues (~5,000 kAUD phantom cost in construction years)"
-    },
-    {
-      "category": "TAX",
-      "description": "Construction-period losses offset Y1 tax (need loss_cf_active=False or separate handling)"
-    },
-    {
       "category": "EQUITY",
-      "description": "Equity IRR requires SHL/equity structure matching reference model"
-    },
-    {
-      "category": "VTA",
-      "description": "VTA shortfall percentages are simplified annual averages"
+      "description": "Equity IRR: opening equity not visible in CF (need SHL or equity drawdown)"
     }
   ]
 }

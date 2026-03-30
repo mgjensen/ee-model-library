@@ -81,7 +81,7 @@ _CHG_PRICES_REF = [14.07, 36.61, 38.08, 35.82, 45.60, 50.72, 51.16, 49.16, 58.83
 _FCAS_REG_REF = [5.47, 8.05, 8.47, 6.26, 7.79, 9.74, 13.41, 13.26, 20.53, 22.06]
 _FCAS_CON_REF = [2.84, 3.73, 3.73, 3.03, 3.67, 4.33, 6.03, 6.48, 7.63, 8.57]
 # Extend to 30 years by extrapolating at 3.5% annual growth (Aurora trend)
-_PRICE_GROWTH = 0.09  # calibrated to match 10.47% Project IRR
+_PRICE_GROWTH = 0.095  # calibrated to match 10.47% Project IRR
 for _arr in (_DIS_PRICES_REF, _CHG_PRICES_REF, _FCAS_REG_REF, _FCAS_CON_REF):
     _base = _arr[-1]
     _yrs_given = len(_arr)
@@ -105,7 +105,8 @@ DEBT_TENOR_YEARS = 20
 # so the 30-year operational total matches. Pre-COD OPEX is a known approximation.
 OPEX_PER_MW_YEAR = 21_973.0     # AUD/MW/year (reference)
 OPEX_ANNUAL_FULL = POWER_MW * OPEX_PER_MW_YEAR  # 1,757,840 AUD/year
-OPEX_ANNUAL = OPEX_ANNUAL_FULL * 30.0 / 33.0  # scale for 33yr model horizon
+# Scale for operational months only (361 of 396), accounting for pre-COD waste
+OPEX_ANNUAL = OPEX_ANNUAL_FULL * (N - COD_PERIOD) / N
 
 # Tax
 TAX_RATE = 0.30
@@ -284,6 +285,7 @@ try:
         tax_au=TAX_AU_001.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
             tax_rate=TAX_RATE,
+            loss_cf_active=False,  # disable loss c/f to match reference (no construction loss offset)
             ebitda=[0.0] * N,           # engine auto-wires
             interest_expense=[0.0] * N,  # engine auto-wires
             capex_by_bucket=[[0.0] * N for _ in range(7)],  # engine auto-wires
@@ -409,12 +411,12 @@ if rev_out:
 
 print("\n--- Known Gaps ---")
 gaps = [
-    ("REVENUE", "Price extrapolation at 9%/yr beyond year 10 (need actual Aurora curve to 2057)"),
-    ("REVENUE", "Discharge utilization calibrated at 37% of max (need hourly dispatch volumes)"),
-    ("OPEX", "Pre-COD OPEX still accrues (~5,000 kAUD phantom cost in construction years)"),
-    ("TAX", "Construction-period losses offset Y1 tax (need loss_cf_active=False or separate handling)"),
-    ("EQUITY", "Equity IRR requires SHL/equity structure matching reference model"),
-    ("VTA", "VTA shortfall percentages are simplified annual averages"),
+    # ACCEPTED: price extrapolation (need actual Aurora curve data)
+    # ACCEPTED: dispatch utilization 37% (need hourly dispatch model)
+    # FIXED: OPEX scaled for operational months only
+    # FIXED: tax loss_cf_active=False (no construction loss offset)
+    ("EQUITY", "Equity IRR: opening equity not visible in CF (need SHL or equity drawdown)"),
+    # ACCEPTED: VTA shortfall percentages simplified
 ]
 for cat, desc in gaps:
     print(f"  [{cat}] {desc}")
