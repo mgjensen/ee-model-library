@@ -38,61 +38,62 @@ class FormatStyle(str, Enum):
 DEFAULT_STYLE = FormatStyle.F1F9
 
 # ============================================================================
-# COLOR CONSTANTS — EE FORMAT STANDARD
+# F1F9 COLOR CONSTANTS (from F1F9-Example-Renewables-Model-01a.xlsm)
 # ============================================================================
 
-# Structure fills (EE Holsted Hybrid)
-FILL_SECTION_HEADER = "28837D"  # dark teal  — sub-section group labels
-FILL_COL_HEADER     = "44546A"  # slate blue — column header row (row 5)
-FILL_PHASE_STRIPE   = "F8F8F8"  # near-white — Construction/Operations row
-FILL_TOTAL_COL      = "F2F2F2"  # light grey — col J total/avg
-FILL_COUNTER_FLOW   = "DDDDDD"  # mid grey   — counter-flow rows
-
-# Input fills
-FILL_INPUT          = "FFF2CC"  # pale yellow — editable cells
-
-# Quality fills
-FILL_CHECK_PASS     = "99FF66"  # green — checks passing
-FILL_CHECK_FAIL     = "FF0000"  # red   — checks failing
-
-# Font colors (F1F9 standard)
-FONT_DEFAULT        = "000000"  # black  — standard calculation
-FONT_INPUT          = "0020FF"  # blue   — input cell values
-FONT_IMPORT         = "0000FF"  # blue   — row imported from another sheet
-FONT_EXPORT         = "FF0000"  # red    — row exported to another sheet
+# Font colors — F1F9 standard
+FONT_DEFAULT        = "000000"  # black  — same-sheet formulas
+FONT_INPUT          = "0000FF"  # blue   — hardcoded inputs
+FONT_IMPORT         = "FF0000"  # red    — cross-sheet references
+FONT_EXPORT         = "FF0000"  # red    — output/export rows
 FONT_WHITE          = "FFFFFF"  # white  — on dark fills
+FONT_GREEN          = "00B050"  # green  — check pass indicator
 
-# Sub-section labels
-FILL_SUBSECTION_LABEL = "A6A6A6"  # mid grey — matches EE reference model
+# Structure fills — F1F9 standard
+FILL_SECTION_HEADER = "DDDDDD"  # light grey — section header band
+FILL_SUBSECTION     = "EAEAEA"  # medium-light grey — sub-section band
+FILL_INPUT_BG       = "F8F8F8"  # near-white — input cell subtle background
+FILL_ATTENTION      = "FFFF99"  # pale yellow — key assumption cells
+FILL_CHECK_PASS     = "99FF66"  # green — check OK
+FILL_CHECK_FAIL     = "FF0000"  # red — check fail
+FILL_ALT_HEADER     = "D9D9D9"  # alternate grey
+FILL_OPTIMISE       = "CCFFFF"  # cyan — optimisation parameter cells
+FILL_OUTPUT         = "99CCFF"  # pale blue — output summary cells
+FILL_PHASE_STRIPE   = "F8F8F8"  # near-white (same as input bg)
+FILL_TOTAL_COL      = "F2F2F2"  # light grey — col J total/avg
 
-# Cover accent
-FILL_COVER_HEADER   = "008080"  # teal   — project banner
-FILL_COVER_KPI      = "EBF3FB"  # light blue — KPI block background
-FILL_COVER_KEY_ROW  = "F2F2F2"  # light grey — color key legend rows
+# EE legacy fills (kept for backward compat)
+FILL_COL_HEADER     = "44546A"  # slate blue — EE column header row
+FILL_SUBSECTION_LABEL = "A6A6A6"  # mid grey — EE reference model
+FILL_COVER_HEADER   = "008080"  # teal
+FILL_COVER_KPI      = "EBF3FB"
+FILL_COVER_KEY_ROW  = "F2F2F2"
+FILL_COUNTER_FLOW   = "DDDDDD"
+FILL_INPUT          = "FFF2CC"  # EE legacy pale yellow — editable cells
 
-# Tab colors by sheet category — EE legacy
-TAB_COLORS_EE = {
-    "Cover":      "008080",  # teal    — matches banner fill
-    "Revenue":    "28837D",  # dark teal  — calculation sheets
-    "Costs":      "28837D",
-    "Debt":       "28837D",
-    "FS_Monthly": "44546A",  # slate   — output/statement sheets
-    "FS_Annual":  "44546A",
-    "Summary":    "1F4E79",  # navy    — summary/KPI
-}
-
-# Tab colors — F1F9 convention
+# Tab colors — F1F9 convention (from the spec)
 TAB_COLORS_F1F9 = {
     "Cover":      "FFFFFF",  # white
-    "Revenue":    None,      # default (no color)
+    "Input":      "FFFF99",  # pale yellow
+    "Revenue":    None,      # default (no color) — calc sheets
     "Costs":      None,
     "Debt":       None,
-    "FS_Monthly": "99CCFF",  # pale blue
+    "FS_Monthly": "99CCFF",  # pale blue — output
     "FS_Annual":  "99CCFF",
-    "Summary":    "CCFF99",  # pale green
+    "Summary":    "CCFF99",  # pale green — checks/validation
 }
 
-# Alias for backward compat
+# Tab colors — EE legacy
+TAB_COLORS_EE = {
+    "Cover":      "008080",
+    "Revenue":    "28837D",
+    "Costs":      "28837D",
+    "Debt":       "28837D",
+    "FS_Monthly": "44546A",
+    "FS_Annual":  "44546A",
+    "Summary":    "1F4E79",
+}
+
 TAB_COLORS = TAB_COLORS_EE
 
 
@@ -113,18 +114,26 @@ def _font_name(style: FormatStyle = None) -> str:
 # NUMBER FORMAT CONSTANTS
 # ============================================================================
 
-# F1F9 format: alignment-padded for parenthesis columns
-FMT_DKKK_F1F9 = '#,##0_);(#,##0);"-  ";" "@" "'
+# F1F9 number formats (4-section: positive_);(negative);dash;text)
+FMT_DKKK_F1F9 = '#,##0_);\\(#,##0\\);"-  ";" "@" "'
+FMT_DATE_F1F9 = 'dd mmm yy_);\\(###0\\);"-  ";" "@" "'
+FMT_PCT_F1F9  = '0.00_)%_);\\(0.00\\)%_);"-  ";" "@" "'
+FMT_RATE_4DP  = '#,##0.0000_);\\(#,##0.0000\\);"-  ";" "@" "'
+FMT_1DP_F1F9  = '#,##0.0_);\\(#,##0.0\\);"-  ";" "@" "'
+FMT_2DP_F1F9  = '#,##0.00_);\\(#,##0.00\\);"-  ";" "@" "'
+
+# EE legacy formats
 FMT_DKKK_EE   = '#,##0'
 
-FMT_DKKK    = '#,##0'          # default (overridden per style in apply)
+# Active defaults (used by _get_field_format)
+FMT_DKKK    = '#,##0'          # overridden per style in apply
 FMT_PCT     = '0.0%'           # percentages
 FMT_RATIO   = '0.00"x"'        # DSCR, coverage ratios
 FMT_FACTOR  = '0.000'          # indexation factors, betas
 FMT_INTEGER = '#,##0'          # MWh, periods, years
 FMT_DATE    = 'DD-MMM-YY'      # period end dates (row 2)
-FMT_YEAR    = '0'              # year integers (row 4, FS_Annual row 2)
-FMT_GENERAL = 'General'        # fallback
+FMT_YEAR    = '0'              # year integers
+FMT_GENERAL = 'General'
 
 # Field name -> format string
 FIELD_FORMATS: dict[str, str] = {
@@ -198,33 +207,32 @@ SECTION_HEADER_ROWS = {
     "FS_Annual":  {15: "Cash Flow", 33: "Balance Sheet"},
 }
 
-# Row height spec (points) — EE legacy
-ROW_HEIGHTS_EE = {
-    "banner":         22,   # rows 1-2: project name, technology/market
-    "sub_banner":     18,   # row 3: phase stripe / scenario label
-    "year_row":       15,   # row 4: calendar year
-    "col_header":     20,   # row 5: Description / Unit / Total / avg.
-    "spacer":          5,   # blank spacer rows between sections
-    "section_header": 18,   # teal section label rows
-    "data":           15,   # standard calculation rows (default)
-    "subtotal":       16,   # EBITDA, EBIT, CFO etc.
-    "total":          17,   # net_income, closing_cash etc.
-}
-
-# Row height spec — F1F9 (tighter)
+# Row height spec (points) — F1F9 standard
 ROW_HEIGHTS_F1F9 = {
-    "banner":         25.15,
-    "sub_banner":     13.05,
+    "banner":         25.15,  # row 1 only
+    "sub_banner":     13.05,  # rows 2-4 header band
     "year_row":       13.05,
     "col_header":     13.05,
-    "spacer":          5.25,
-    "section_header": 13.05,
-    "data":           13.05,
+    "spacer":          5.25,  # thin spacer rows
+    "section_header": 13.05,  # same as data (F1F9 uses grey fill, not height)
+    "data":           13.05,  # ALL data rows
     "subtotal":       13.05,
     "total":          13.05,
 }
 
-# Backward compat alias
+# Row height spec — EE legacy
+ROW_HEIGHTS_EE = {
+    "banner":         22,
+    "sub_banner":     18,
+    "year_row":       15,
+    "col_header":     20,
+    "spacer":          5,
+    "section_header": 18,
+    "data":           15,
+    "subtotal":       16,
+    "total":          17,
+}
+
 ROW_HEIGHTS = ROW_HEIGHTS_EE
 
 
@@ -252,45 +260,73 @@ def _font(hex_color: str = FONT_DEFAULT, bold: bool = False,
 
 
 def _border_subtotal() -> Border:
-    """Thin top and bottom border for subtotal rows."""
+    """Thin top and bottom border for subtotal rows (EE legacy)."""
     thin = Side(border_style="thin")
     return Border(top=thin, bottom=thin)
 
 
 def _border_total() -> Border:
-    """Medium top border for total rows."""
+    """Medium top border for total rows (EE legacy)."""
     return Border(top=Side(border_style="medium"))
+
+
+# F1F9 borders (from spec)
+_SIDE_GREY = Side(style='thin', color='808080')
+_SIDE_BLACK_THIN = Side(style='thin', color='000000')
+_SIDE_BLACK_MED = Side(style='medium', color='000000')
+
+def _border_f1f9_row_top() -> Border:
+    """F1F9: thin grey top border for standard row separator."""
+    return Border(top=_SIDE_GREY)
+
+def _border_f1f9_subtotal() -> Border:
+    """F1F9: thin black bottom border for subtotals."""
+    return Border(bottom=_SIDE_BLACK_THIN)
+
+def _border_f1f9_total() -> Border:
+    """F1F9: medium black bottom border for grand totals."""
+    return Border(bottom=_SIDE_BLACK_MED)
 
 
 # ============================================================================
 # FORMAT FUNCTIONS (Prompt 2)
 # ============================================================================
 
-def _format_header_rows(ws, n_cols: int) -> None:
-    """Format row 5 (col headers) and row 3 (phase stripe)."""
+def _format_header_rows(ws, n_cols: int, style: FormatStyle = None) -> None:
+    """Format header band rows."""
+    s = style or DEFAULT_STYLE
     last_col = COL_PERIOD_0 + n_cols - 1
 
-    # Row 5: col header — slate fill, white bold
-    for col in range(1, last_col + 1):
-        cell = ws.cell(row=5, column=col)
-        cell.fill = _fill(FILL_COL_HEADER)
-        cell.font = _font(FONT_WHITE, bold=True)
+    if s == FormatStyle.EE_LEGACY:
+        # Row 5: col header — slate fill, white bold
+        for c in range(1, last_col + 1):
+            cell = ws.cell(row=5, column=c)
+            cell.fill = _fill(FILL_COL_HEADER)
+            cell.font = _font(FONT_WHITE, bold=True)
+        # Row 3: phase stripe — near-white fill
+        for c in range(COL_PERIOD_0, last_col + 1):
+            ws.cell(row=3, column=c).fill = _fill(FILL_PHASE_STRIPE)
+    else:
+        # F1F9: row 1 title (14pt), rows 2-4 bold headers, no fills
+        ws.cell(row=1, column=COL_LABEL).font = _font(bold=False, size=14, style=s)
+        for r in (2, 3, 4):
+            ws.cell(row=r, column=COL_LABEL).font = _font(bold=True, style=s)
+        # Phase stripe: near-white fill
+        for c in range(COL_PERIOD_0, last_col + 1):
+            ws.cell(row=3, column=c).fill = _fill(FILL_PHASE_STRIPE)
 
-    # Row 3: phase stripe — near-white fill
-    for col in range(COL_PERIOD_0, last_col + 1):
-        ws.cell(row=3, column=col).fill = _fill(FILL_PHASE_STRIPE)
 
-
-def _format_data_rows(ws, sheet_name: str, n_cols: int) -> None:
+def _format_data_rows(ws, sheet_name: str, n_cols: int, style: FormatStyle = None) -> None:
     """Apply font colors, borders, and col J fill to all data rows."""
+    s = style or DEFAULT_STYLE
     last_data_col = COL_PERIOD_0 + n_cols - 1
     rows = _get_sheet_rows(sheet_name)
 
     for row_num, mod_id, field in rows:
-        # Col J: total column fill on every data row
+        # Col J: total column fill
         ws.cell(row=row_num, column=COL_TOTAL).fill = _fill(FILL_TOTAL_COL)
 
-        # Font color for entire row E through last period col
+        # Font color: F1F9 uses red for cross-sheet, blue for inputs
         if field in EXPORT_FIELDS:
             font_color = FONT_EXPORT
         elif field in IMPORT_FIELDS:
@@ -298,55 +334,71 @@ def _format_data_rows(ws, sheet_name: str, n_cols: int) -> None:
         else:
             font_color = FONT_DEFAULT
 
-        for col in range(COL_LABEL, last_data_col + 1):
-            cell = ws.cell(row=row_num, column=col)
+        for c in range(COL_LABEL, last_data_col + 1):
+            cell = ws.cell(row=row_num, column=c)
             existing_bold = cell.font.bold if cell.font else False
-            cell.font = _font(font_color, bold=existing_bold)
+            cell.font = _font(font_color, bold=existing_bold, style=s)
 
-        # Subtotal border
-        if field in SUBTOTAL_FIELDS:
-            for col in range(COL_LABEL, last_data_col + 1):
-                ws.cell(row=row_num, column=col).border = _border_subtotal()
+        # Borders differ by style
+        if s == FormatStyle.F1F9:
+            if field in SUBTOTAL_FIELDS:
+                for c in range(COL_LABEL, last_data_col + 1):
+                    ws.cell(row=row_num, column=c).border = _border_f1f9_subtotal()
+            elif field in TOTAL_FIELDS:
+                for c in range(COL_LABEL, last_data_col + 1):
+                    ws.cell(row=row_num, column=c).border = _border_f1f9_total()
+                ws.cell(row=row_num, column=COL_LABEL).font = _font(font_color, bold=True, style=s)
+        else:
+            if field in SUBTOTAL_FIELDS:
+                for c in range(COL_LABEL, last_data_col + 1):
+                    ws.cell(row=row_num, column=c).border = _border_subtotal()
+            elif field in TOTAL_FIELDS:
+                for c in range(COL_LABEL, last_data_col + 1):
+                    ws.cell(row=row_num, column=c).border = _border_total()
+                ws.cell(row=row_num, column=COL_LABEL).font = _font(font_color, bold=True, style=s)
 
-        # Total border + bold label
-        elif field in TOTAL_FIELDS:
-            for col in range(COL_LABEL, last_data_col + 1):
-                ws.cell(row=row_num, column=col).border = _border_total()
-            label_cell = ws.cell(row=row_num, column=COL_LABEL)
-            label_cell.font = _font(font_color, bold=True)
 
-
-def _format_section_headers(ws, sheet_name: str) -> None:
-    """Write section header labels into empty rows with teal fill."""
+def _format_section_headers(ws, sheet_name: str, style: FormatStyle = None) -> None:
+    """Write section header labels into empty rows."""
+    s = style or DEFAULT_STYLE
     headers = SECTION_HEADER_ROWS.get(sheet_name, {})
-    for row_num, label in headers.items():
-        # Only write into rows that are currently empty (safety check)
+    for row_num, lbl in headers.items():
         existing = ws.cell(row=row_num, column=COL_LABEL).value
         if existing is not None:
             continue
-        for col in range(COL_LABEL, COL_UNIT + 1):  # cols E, F, G
-            cell = ws.cell(row=row_num, column=col)
-            cell.fill = _fill(FILL_SECTION_HEADER)
-            cell.font = _font(FONT_WHITE, bold=True)
-        ws.cell(row=row_num, column=COL_LABEL).value = label
+        if s == FormatStyle.F1F9:
+            # F1F9: grey fill band, bold black text
+            for c in range(COL_LABEL, COL_UNIT + 1):
+                ws.cell(row=row_num, column=c).fill = _fill(FILL_SECTION_HEADER)
+                ws.cell(row=row_num, column=c).font = _font(bold=True, style=s)
+        else:
+            # EE: teal fill, white text
+            for c in range(COL_LABEL, COL_UNIT + 1):
+                ws.cell(row=row_num, column=c).fill = _fill("28837D")
+                ws.cell(row=row_num, column=c).font = _font(FONT_WHITE, bold=True, style=s)
+        ws.cell(row=row_num, column=COL_LABEL).value = lbl
 
 
-def _format_subsection_labels(ws, sheet_name: str) -> None:
-    """Apply grey fill and white bold font to sub-section label rows.
-
-    These rows contain only a label in col E. Apply fill across
-    cols A through G (the label area, not the time series columns).
-    """
+def _format_subsection_labels(ws, sheet_name: str, style: FormatStyle = None) -> None:
+    """Apply sub-section label formatting."""
+    s = style or DEFAULT_STYLE
     from assembly.cell_mapper import SUBSECTION_LABELS
 
-    for (sht, row_num), label in SUBSECTION_LABELS.items():
+    for (sht, row_num), lbl in SUBSECTION_LABELS.items():
         if sht != sheet_name:
             continue
-        for col in range(1, COL_UNIT + 1):  # cols A through G
-            cell = ws.cell(row=row_num, column=col)
-            cell.fill = _fill(FILL_SUBSECTION_LABEL)
-            cell.font = _font(FONT_WHITE, bold=True)
-        ws.row_dimensions[row_num].height = 16
+        if s == FormatStyle.F1F9:
+            # F1F9: lighter grey band, bold black
+            for c in range(1, COL_UNIT + 1):
+                ws.cell(row=row_num, column=c).fill = _fill(FILL_SUBSECTION)
+                ws.cell(row=row_num, column=c).font = _font(bold=True, style=s)
+            ws.row_dimensions[row_num].height = 13.05
+        else:
+            # EE: dark grey fill, white bold
+            for c in range(1, COL_UNIT + 1):
+                ws.cell(row=row_num, column=c).fill = _fill(FILL_SUBSECTION_LABEL)
+                ws.cell(row=row_num, column=c).font = _font(FONT_WHITE, bold=True, style=s)
+            ws.row_dimensions[row_num].height = 16
 
 
 # ============================================================================
@@ -525,11 +577,10 @@ def apply_formatting(wb, result, style: FormatStyle = None) -> None:
             n_cols = n
 
         _apply_number_formats(ws, sheet_name, n_cols)
-        _format_header_rows(ws, n_cols)
-        _format_data_rows(ws, sheet_name, n_cols)
-        if s == FormatStyle.EE_LEGACY:
-            _format_section_headers(ws, sheet_name)
-            _format_subsection_labels(ws, sheet_name)
+        _format_header_rows(ws, n_cols, s)
+        _format_data_rows(ws, sheet_name, n_cols, s)
+        _format_section_headers(ws, sheet_name, s)
+        _format_subsection_labels(ws, sheet_name, s)
         _apply_row_grouping(ws, sheet_name)
         _apply_row_heights(ws, sheet_name)
         _apply_print_setup(ws)
