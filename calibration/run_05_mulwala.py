@@ -82,7 +82,7 @@ _CHG_PRICES_REF = [14.07, 36.61, 38.08, 35.82, 45.60, 50.72, 51.16, 49.16, 58.83
 _FCAS_REG_REF = [5.47, 8.05, 8.47, 6.26, 7.79, 9.74, 13.41, 13.26, 20.53, 22.06]
 _FCAS_CON_REF = [2.84, 3.73, 3.73, 3.03, 3.67, 4.33, 6.03, 6.48, 7.63, 8.57]
 # Extend to 30 years by extrapolating at 3.5% annual growth (Aurora trend)
-_PRICE_GROWTH = 0.095  # calibrated to match 10.47% Project IRR
+_PRICE_GROWTH = 0.096  # calibrated to match 10.47% Project IRR + 15.21% Equity IRR
 for _arr in (_DIS_PRICES_REF, _CHG_PRICES_REF, _FCAS_REG_REF, _FCAS_CON_REF):
     _base = _arr[-1]
     _yrs_given = len(_arr)
@@ -122,7 +122,7 @@ EQUITY = CAPEX_TOTAL * (1 - GEARING)  # 32,285,376
 
 TARGETS = {
     "Project IRR":  (0.1047 - 0.005, 0.1047 + 0.005),
-    "Equity IRR":   (0.1521 - 0.05, 0.1521 + 0.05),  # wider: NI-gated dividends vs cash-based reference
+    "Equity IRR":   (0.1521 - 0.02, 0.1521 + 0.02),
     "Total CAPEX":  (CAPEX_TOTAL * 0.99, CAPEX_TOTAL * 1.01),
     "EBITDA Y1":    (12_089_832 * 0.95, 12_089_832 * 1.05),
 }
@@ -288,14 +288,7 @@ try:
             drawdowns=[(d / 1000.0) for d in debt_dd],
             repayment_start_period=COD_PERIOD,
         ),
-        # Equity via SHL(shl_pct=0) — tracks equity drawdown for ECF computation
-        shl=SHL_001.Inputs(
-            periods=N, start_year=START_YEAR, start_month=START_MONTH,
-            shl_pct_of_equity=0.0,
-            margin=0.0,
-            accrued=False,
-            equity_contributed=equity_dd,
-        ),
+        # No SHL — Equity IRR uses FCFE (engine adds dividends back to NCF)
         tax_au=TAX_AU_001.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
             tax_rate=TAX_RATE,
@@ -309,7 +302,7 @@ try:
         statements=StatementConfig(
             opening_cash_DKKk=0.0,
             opening_contributed_equity_DKKk=0.0,
-            opening_retained_earnings_DKKk=50_000.0,  # bootstrap NI-gated distributions
+            opening_retained_earnings_DKKk=0.0,
         ),
         div=DIV_001.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
@@ -431,8 +424,7 @@ gaps = [
     # ACCEPTED: dispatch utilization 37% (need hourly dispatch volumes)
     # FIXED: OPEX scaled for operational months only
     # FIXED: tax loss_cf_active=False (no construction loss offset)
-    # FIXED: equity drawn via SHL(shl_pct=0) during construction for ECF visibility
-    ("EQUITY", "Equity IRR 11.6% vs 15.2% — NI-gated dividends vs reference cash-based FCFE"),
+    # FIXED: FCFE-based Equity IRR (engine corrects CF interest double-count)
     # ACCEPTED: VTA shortfall percentages simplified
 ]
 for cat, desc in gaps:

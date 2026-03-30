@@ -968,7 +968,19 @@ def run(config: ProjectConfig) -> AssemblyResult:
                 cap_red = div_out.capital_reduction[p]
                 ecf[p] = -eq_in + div_p + cap_red
         else:
-            ecf = cf_out.net_cash_flow
+            # FCFE = CFO + CFI + net_borrowing = NCF + dividends + interest_paid
+            # CF_001 puts interest in BOTH CFO (via NI) and CFF (as cash payment).
+            # Adding back interest + dividends from NCF gives correct levered FCFE.
+            _div_ecf = out.get("DIV_001")
+            _pl_ecf = out.get("PL_001")
+            if _div_ecf and _pl_ecf:
+                ecf = [cf_out.net_cash_flow[p]
+                       + _div_ecf.dividends_paid[p]
+                       + _div_ecf.capital_reduction[p]
+                       + _pl_ecf.interest_expense[p]
+                       for p in range(n)]
+            else:
+                ecf = cf_out.net_cash_flow
 
         proj_rate = (
             sc.project_discount_rate if sc.project_discount_rate is not None
