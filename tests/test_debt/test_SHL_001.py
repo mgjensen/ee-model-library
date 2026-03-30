@@ -415,3 +415,51 @@ class TestMultiTranche:
                     drawdown_schedule=[500.0] + [0.0] * 59,  # sums to 500 not 1000
                 )],
             )
+
+
+# ---------------------------------------------------------------------------
+# PIK compounding frequency tests
+# ---------------------------------------------------------------------------
+
+def test_pik_freq1_identical_to_default():
+    """freq=1 (monthly) gives identical results to the original default."""
+    out_default = calculate(_make_inputs())
+    out_freq1 = calculate(_make_inputs().model_copy(update={"pik_compounding_frequency": 1}))
+    assert out_default.total_interest == pytest.approx(out_freq1.total_interest, rel=1e-10)
+    assert out_default.final_balance == pytest.approx(out_freq1.final_balance, rel=1e-10)
+
+
+def test_pik_freq6_lower_than_freq1():
+    """Semi-annual compounding produces less PIK interest than monthly."""
+    out_m = calculate(_make_inputs(periods=360, margin=0.08))
+    inp_sa = _make_inputs(periods=360, margin=0.08).model_copy(update={"pik_compounding_frequency": 6})
+    out_sa = calculate(inp_sa)
+    assert out_sa.total_interest < out_m.total_interest
+    # Peak balance (before final repayment) should be lower
+    assert max(out_sa.closing_balance) < max(out_m.closing_balance)
+
+
+def test_pik_freq12_lower_than_freq6():
+    """Annual compounding produces less interest than semi-annual."""
+    inp6 = _make_inputs(periods=360, margin=0.08).model_copy(update={"pik_compounding_frequency": 6})
+    inp12 = _make_inputs(periods=360, margin=0.08).model_copy(update={"pik_compounding_frequency": 12})
+    out6 = calculate(inp6)
+    out12 = calculate(inp12)
+    assert out12.total_interest < out6.total_interest
+
+
+def test_pik_freq_quantitative():
+    """At 8% on 10,000 over 360m: monthly vs semi-annual ~2-3% difference."""
+    n = 360
+    eq = [10_000.0] + [0.0] * (n - 1)
+    inp_m = Inputs(periods=n, start_year=2025, start_month=1,
+                   shl_pct_of_equity=1.0, margin=0.08, accrued=True,
+                   equity_contributed=eq)
+    inp_sa = inp_m.model_copy(update={"pik_compounding_frequency": 6})
+    out_m = calculate(inp_m)
+    out_sa = calculate(inp_sa)
+    # Compare peak balances (before final repayment in last period)
+    peak_m = max(out_m.closing_balance[:-1])
+    peak_sa = max(out_sa.closing_balance[:-1])
+    diff_pct = (peak_m - peak_sa) / peak_m
+    assert 0.01 < diff_pct < 0.10

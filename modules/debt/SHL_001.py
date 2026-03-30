@@ -1,11 +1,11 @@
 """
 MODULE_ID:    SHL_001
-VERSION:      1.0
+VERSION:      1.1
 TIER:         detailed
 MARKETS:      ["DK", "DE", "AU", "SE", "PL", "*"]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
 CREATED:      2026-03-17
-MODIFIED:     2026-03-18
+MODIFIED:     2026-03-30
 
 Shareholder loan (SHL) schedule.
 
@@ -59,6 +59,7 @@ class SHLTranche(BaseModel):
     # Terms
     margin: float = Field(0.07, ge=0)
     accrued: bool = Field(True)
+    pik_compounding_frequency: int = Field(1, ge=1, le=12)
     repayment_schedule: Optional[list[float]] = Field(None)
 
 
@@ -84,6 +85,10 @@ class Inputs(BaseModel):
     accrued: bool = Field(
         True,
         description="If True, interest accrues (PIK); if False, interest is paid cash"
+    )
+    pik_compounding_frequency: int = Field(
+        1, ge=1, le=12,
+        description="Months between PIK compounding. 1=monthly (default), 6=semi-annual"
     )
 
     # Equity contributed — monthly series from which SHL is sized
@@ -185,6 +190,8 @@ def _run_single_tranche(
     n: int, margin: float, accrued: bool,
     shl_drawdown: list[float],
     repayment_schedule: Optional[list[float]],
+    pik_compounding_frequency: int = 1,
+    start_month: int = 1,
 ) -> dict:
     """Run one SHL tranche and return arrays."""
     r = margin / 12.0
@@ -196,12 +203,24 @@ def _run_single_tranche(
     closing = [0.0] * n
 
     balance = 0.0
+    accrued_pik = 0.0
+    freq = pik_compounding_frequency
+
     for p in range(n):
         balance += shl_drawdown[p]
         opening[p] = balance
         interest[p] = balance * r
+
         if accrued:
-            balance += interest[p]
+            if freq == 1:
+                balance += interest[p]
+            else:
+                accrued_pik += interest[p]
+                cal_month = ((start_month - 1 + p) % 12) + 1
+                if cal_month % freq == 0 or p == n - 1:
+                    balance += accrued_pik
+                    accrued_pik = 0.0
+
         rep = min(repay_sched[p], balance) if repay_sched[p] > 0 else 0.0
         if repayment_schedule is None and p == n - 1:
             rep = balance
@@ -239,7 +258,10 @@ def calculate(inputs: Inputs) -> Outputs:
             else:
                 dd = [e * t.shl_pct_of_equity for e in t.equity_contributed]
 
-            result = _run_single_tranche(n, t.margin, t.accrued, dd, t.repayment_schedule)
+            result = _run_single_tranche(
+                n, t.margin, t.accrued, dd, t.repayment_schedule,
+                t.pik_compounding_frequency, inputs.start_month,
+            )
             total_initial += result["initial_shl"]
 
             for p in range(n):
@@ -302,14 +324,22 @@ def calculate(inputs: Inputs) -> Outputs:
     closing = [0.0] * n
 
     balance = 0.0
+    accrued_pik = 0.0
+    freq = inputs.pik_compounding_frequency
     for p in range(n):
         balance += shl_drawdown[p]
         opening[p] = balance
         interest[p] = balance * r
 
         if inputs.accrued:
-            # PIK: interest added to balance
-            balance += interest[p]
+            if freq == 1:
+                balance += interest[p]
+            else:
+                accrued_pik += interest[p]
+                cal_month = ((inputs.start_month - 1 + p) % 12) + 1
+                if cal_month % freq == 0 or p == n - 1:
+                    balance += accrued_pik
+                    accrued_pik = 0.0
         # else: interest paid cash, balance unchanged
 
         # Repayment

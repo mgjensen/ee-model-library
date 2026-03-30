@@ -20,7 +20,7 @@
     },
     "TAX_001": {
         "module_id": "TAX_001",
-        "version": "1.0",
+        "version": "1.2",
         "tier": "detailed",
         "markets": [
             "DK"
@@ -33,7 +33,7 @@
         ],
         "path": "modules/tax/TAX_001.py",
         "created": "2026-03-17",
-        "modified": "2026-03-17"
+        "modified": "2026-03-30"
     },
     "DEBT_001": {
         "module_id": "DEBT_001",
@@ -319,7 +319,7 @@
     },
     "SHL_001": {
         "module_id": "SHL_001",
-        "version": "1.0",
+        "version": "1.1",
         "tier": "detailed",
         "markets": [
             "DK",
@@ -337,7 +337,7 @@
         ],
         "path": "modules/debt/SHL_001.py",
         "created": "2026-03-17",
-        "modified": "2026-03-18"
+        "modified": "2026-03-30"
     },
     "DSRA_001": {
         "module_id": "DSRA_001",
