@@ -80,7 +80,7 @@ def _uniform_rates(rate, n=N_BUCKETS):
 
 def test_declining_balance_zero_opening_no_capex():
     yg = _year_groups(24, 2025, 1)
-    annual_dep, monthly_dep = calculate_declining_balance(
+    annual_dep, monthly_dep, _ = calculate_declining_balance(
         [0.0] * N_BUCKETS, [[0.0] * 24 for _ in range(N_BUCKETS)],
         _uniform_rates(0.15), yg, 24
     )
@@ -92,7 +92,7 @@ def test_declining_balance_single_bucket_year1():
     """100,000 DKKk opening in bucket 0, 15% rate → 15,000 year-1 dep, 85,000 closing."""
     yg = _year_groups(24, 2025, 1)
     opening = [100_000.0] + [0.0] * (N_BUCKETS - 1)
-    annual_dep, monthly_dep = calculate_declining_balance(
+    annual_dep, monthly_dep, _ = calculate_declining_balance(
         opening,
         [[0.0] * 24 for _ in range(N_BUCKETS)],
         _uniform_rates(0.15), yg, 24
@@ -104,7 +104,7 @@ def test_declining_balance_single_bucket_year1():
 def test_declining_balance_monthly_sum_equals_annual():
     yg = _year_groups(24, 2025, 1)
     opening = [100_000.0] + [0.0] * (N_BUCKETS - 1)
-    annual_dep, monthly_dep = calculate_declining_balance(
+    annual_dep, monthly_dep, _ = calculate_declining_balance(
         opening,
         [[0.0] * 24 for _ in range(N_BUCKETS)],
         _uniform_rates(0.15), yg, 24
@@ -118,7 +118,7 @@ def test_declining_balance_capex_increases_basis():
     yg = _year_groups(24, 2025, 1)
     capex = [[0.0] * 24 for _ in range(N_BUCKETS)]
     capex[0][0] = 50_000.0
-    annual_dep, _ = calculate_declining_balance(
+    annual_dep, *_ = calculate_declining_balance(
         [0.0] * N_BUCKETS, capex, _uniform_rates(0.15), yg, 24
     )
     assert annual_dep[0] == pytest.approx(7_500.0)  # 50,000 × 0.15
@@ -128,7 +128,7 @@ def test_declining_balance_four_buckets_uniform_rate():
     """Verify first 4 buckets contribute with uniform rate."""
     yg = _year_groups(12, 2025, 1)
     opening = [10_000.0, 20_000.0, 5_000.0, 1_000.0] + [0.0] * (N_BUCKETS - 4)
-    annual_dep, _ = calculate_declining_balance(
+    annual_dep, *_ = calculate_declining_balance(
         opening, [[0.0] * 12 for _ in range(N_BUCKETS)],
         _uniform_rates(0.15), yg, 12
     )
@@ -504,7 +504,7 @@ def test_seven_buckets_different_rates():
     yg = _year_groups(12, 2025, 1)
     opening = [100_000.0, 50_000.0, 30_000.0, 20_000.0, 10_000.0, 5_000.0, 15_000.0]
     rates = [0.25, 0.25, 0.25, 0.25, 0.04, 0.25, 0.25]
-    annual_dep, _ = calculate_declining_balance(
+    annual_dep, *_ = calculate_declining_balance(
         opening, [[0.0] * 12 for _ in range(N_BUCKETS)],
         rates, yg, 12
     )
@@ -519,7 +519,7 @@ def test_land_bucket_lower_rate():
     opening[0] = 100_000.0  # PV at 25%
     opening[4] = 100_000.0  # Land at 4%
     rates = [0.25, 0.25, 0.25, 0.25, 0.04, 0.25, 0.25]
-    annual_dep, _ = calculate_declining_balance(
+    annual_dep, *_ = calculate_declining_balance(
         opening, [[0.0] * 24 for _ in range(N_BUCKETS)],
         rates, yg, 24
     )
@@ -533,7 +533,7 @@ def test_repowering_bucket_capex_in_year10():
     capex = [[0.0] * 24 for _ in range(N_BUCKETS)]
     capex[6][12] = 50_000.0  # Repowering in month 12 (year 2)
     rates = [0.25] * N_BUCKETS
-    annual_dep, _ = calculate_declining_balance(
+    annual_dep, *_ = calculate_declining_balance(
         [0.0] * N_BUCKETS, capex, rates, yg, 24
     )
     # Year 1: no capex, no dep
@@ -549,7 +549,7 @@ def test_all_seven_buckets_contribute():
     for b in range(N_BUCKETS):
         capex[b][0] = 10_000.0
     rates = [0.25, 0.25, 0.25, 0.25, 0.04, 0.25, 0.25]
-    annual_dep, _ = calculate_declining_balance(
+    annual_dep, *_ = calculate_declining_balance(
         [0.0] * N_BUCKETS, capex, rates, yg, 12
     )
     # 6 buckets × 10k × 0.25 + 1 bucket × 10k × 0.04 = 15,000 + 400 = 15,400
@@ -638,3 +638,75 @@ def test_unlevered_tax_length_matches():
     out = calculate(inp)
     assert len(out.unlevered_tax_charge_accrued) == n
     assert len(out.annual_unlevered_tax_charge) > 0
+
+
+# ---------------------------------------------------------------------------
+# Qualifying assets interest deduction rule
+# ---------------------------------------------------------------------------
+
+def test_qualifying_asset_rule_inactive():
+    """Rule inactive (default): zero impact."""
+    n = 24
+    inp = Inputs(
+        periods=n, start_year=2026, start_month=1,
+        ebitda=[500.0] * n, total_interest=[100.0] * n,
+        capex_by_bucket=[[50_000.0] + [0.0] * (n-1)] + [[0.0] * n] * 3,
+        country="DK",
+    )
+    out_off = calculate(inp)
+    inp_on = inp.model_copy(update={"qualifying_asset_rule_active": False})
+    out_on = calculate(inp_on)
+    assert sum(out_off.tax_charge_accrued) == pytest.approx(sum(out_on.tax_charge_accrued))
+
+
+def test_qualifying_asset_rule_high_rate_not_binding():
+    """High rate: not binding (all interest deductible under this rule)."""
+    n = 24
+    inp = Inputs(
+        periods=n, start_year=2026, start_month=1,
+        ebitda=[500.0] * n, total_interest=[100.0] * n,
+        capex_by_bucket=[[50_000.0] + [0.0] * (n-1)] + [[0.0] * n] * 3,
+        country="DK",
+        qualifying_asset_rule_active=True,
+        qualifying_asset_rate=1.0,
+    )
+    out_off = calculate(inp.model_copy(update={"qualifying_asset_rule_active": False}))
+    out_on = calculate(inp)
+    assert sum(out_on.non_deductible_interest) == pytest.approx(
+        sum(out_off.non_deductible_interest), abs=1.0
+    )
+
+
+def test_qualifying_asset_rule_low_rate_caps():
+    """Low rate caps interest deduction, increases tax."""
+    n = 24
+    inp_off = Inputs(
+        periods=n, start_year=2026, start_month=1,
+        ebitda=[500.0] * n, total_interest=[100.0] * n,
+        capex_by_bucket=[[50_000.0] + [0.0] * (n-1)] + [[0.0] * n] * 3,
+        country="DK",
+    )
+    inp_on = inp_off.model_copy(update={
+        "qualifying_asset_rule_active": True,
+        "qualifying_asset_rate": 0.001,
+    })
+    out_off = calculate(inp_off)
+    out_on = calculate(inp_on)
+    assert sum(out_on.non_deductible_interest) > sum(out_off.non_deductible_interest)
+    assert sum(out_on.tax_charge_accrued) >= sum(out_off.tax_charge_accrued)
+
+
+def test_qualifying_asset_rule_no_fixed_assets():
+    """No fixed assets: max deductible = 0 under this rule."""
+    n = 12
+    inp = Inputs(
+        periods=n, start_year=2026, start_month=1,
+        ebitda=[500.0] * n, total_interest=[100.0] * n,
+        capex_by_bucket=[[0.0] * n] * 4,
+        opening_balances=[0.0] * 4,
+        country="DK",
+        qualifying_asset_rule_active=True,
+        qualifying_asset_rate=0.10,
+    )
+    out = calculate(inp)
+    assert sum(out.non_deductible_interest) > 0

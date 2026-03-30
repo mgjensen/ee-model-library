@@ -1,11 +1,11 @@
 """
 MODULE_ID:    TAX_001
-VERSION:      1.1
+VERSION:      1.2
 TIER:         detailed
 MARKETS:      ["DK"]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
 CREATED:      2026-03-17
-MODIFIED:     2026-03-17
+MODIFIED:     2026-03-30
 
 Danish corporate tax calculation for renewable energy projects.
 
@@ -72,6 +72,14 @@ class Inputs(BaseModel):
     opening_balances: list[float] = Field(
         default_factory=lambda: [0.0] * N_BUCKETS,
         description="Opening tax basis per bucket DKKk (4 or 7 values)"
+    )
+
+    # Qualifying assets interest deduction rule (optional)
+    qualifying_asset_rule_active: bool = Field(
+        False, description="Enable qualifying assets cap on interest deductibility"
+    )
+    qualifying_asset_rate: float = Field(
+        0.0, ge=0, description="Max deductible interest as fraction of qualifying assets"
     )
 
     @model_validator(mode="after")
@@ -217,7 +225,7 @@ def calculate_declining_balance(
     rates: list[float],
     year_groups: OrderedDict,
     periods: int,
-) -> tuple[list[float], list[float]]:
+) -> tuple[list[float], list[float], list[float]]:
     """
     Saldometoden: depreciation = rate[b] × (opening balance + year capex additions).
     Closing balance = (opening + additions) × (1 − rate[b]).
@@ -227,10 +235,12 @@ def calculate_declining_balance(
     Returns:
         annual_depreciation: one value per year
         monthly_depreciation: evenly spread across months in each year
+        annual_eop_balance: end-of-year total tax asset balance
     """
     nb = len(opening_balances)
     balances = list(opening_balances)
     annual_dep = []
+    annual_eop = []
 
     for year_periods in year_groups.values():
         year_capex = [
@@ -242,9 +252,10 @@ def calculate_declining_balance(
         for b in range(nb):
             balances[b] = max(0.0, basis[b] * (1.0 - rates[b]))
         annual_dep.append(year_total)
+        annual_eop.append(sum(balances))
 
     monthly_dep = _spread_annual_to_monthly(annual_dep, year_groups, periods)
-    return annual_dep, monthly_dep
+    return annual_dep, monthly_dep, annual_eop
 
 
 def calculate_ebitda_rule(
@@ -384,7 +395,7 @@ def calculate(inputs: Inputs) -> Outputs:
     if len(dep_rates) < N_BUCKETS:
         dep_rates += [dep_rates[-1]] * (N_BUCKETS - len(dep_rates))
 
-    annual_dep, monthly_dep = calculate_declining_balance(
+    annual_dep, monthly_dep, annual_eop_balance = calculate_declining_balance(
         inputs.opening_balances,
         inputs.capex_by_bucket,
         dep_rates,
@@ -401,6 +412,16 @@ def calculate(inputs: Inputs) -> Outputs:
         tax["inflation_rate"],
         tax["interest_carryforward_years"],
     )
+
+    # Step 2b — Qualifying assets rule (caps deductible interest)
+    if inputs.qualifying_asset_rule_active and inputs.qualifying_asset_rate > 0:
+        for y in range(len(annual_ded_int)):
+            qa = annual_eop_balance[y]
+            max_ded = qa * inputs.qualifying_asset_rate
+            if annual_ded_int[y] > max_ded:
+                excess = annual_ded_int[y] - max_ded
+                annual_non_ded_int[y] += excess
+                annual_ded_int[y] = max_ded
 
     # Step 3 — Tax charge with loss carry-forward
     annual_taxable, annual_charge = calculate_tax_charge(
