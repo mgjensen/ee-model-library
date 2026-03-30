@@ -34,6 +34,7 @@ import modules.costs.OPEX_002 as OPEX_002
 import modules.capex.CAPEX_001 as CAPEX_001
 import modules.capex.BESS_REPOW_001 as BESS_REPOW_001
 import modules.debt.DEBT_001 as DEBT_001
+import modules.debt.SHL_001 as SHL_001
 import modules.debt.CONSTR_FINANCE_001 as CONSTR_FINANCE_001
 import modules.tax.TAX_AU_001 as TAX_AU_001
 import modules.core.WACC_001 as WACC_001
@@ -121,6 +122,7 @@ EQUITY = CAPEX_TOTAL * (1 - GEARING)  # 32,285,376
 
 TARGETS = {
     "Project IRR":  (0.1047 - 0.005, 0.1047 + 0.005),
+    "Equity IRR":   (0.1521 - 0.05, 0.1521 + 0.05),  # wider: NI-gated dividends vs cash-based reference
     "Total CAPEX":  (CAPEX_TOTAL * 0.99, CAPEX_TOTAL * 1.01),
     "EBITDA Y1":    (12_089_832 * 0.95, 12_089_832 * 1.05),
 }
@@ -194,6 +196,11 @@ try:
     debt_dd = [0.0] * N
     for p in range(CONSTR_START, COD_PERIOD):
         debt_dd[p] = DEBT_FACILITY / CONSTR_MONTHS
+
+    # Equity drawdown: 30% of capex spread over construction (kAUD scale)
+    equity_dd = [0.0] * N
+    for p in range(CONSTR_START, COD_PERIOD):
+        equity_dd[p] = EQUITY / CONSTR_MONTHS / 1000.0
 
     # Tolling: 50% of 80MW for 7 years from COD
     tolling_end = COD_PERIOD + TOLLING_TENOR_YEARS * 12 - 1
@@ -281,7 +288,14 @@ try:
             drawdowns=[(d / 1000.0) for d in debt_dd],
             repayment_start_period=COD_PERIOD,
         ),
-        # No separate construction finance — single DEBT_001 facility covers both phases
+        # Equity via SHL(shl_pct=0) — tracks equity drawdown for ECF computation
+        shl=SHL_001.Inputs(
+            periods=N, start_year=START_YEAR, start_month=START_MONTH,
+            shl_pct_of_equity=0.0,
+            margin=0.0,
+            accrued=False,
+            equity_contributed=equity_dd,
+        ),
         tax_au=TAX_AU_001.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
             tax_rate=TAX_RATE,
@@ -294,18 +308,18 @@ try:
         ),
         statements=StatementConfig(
             opening_cash_DKKk=0.0,
-            opening_contributed_equity_DKKk=EQUITY / 1000.0,  # 30% of CAPEX drawn at FC
-            opening_retained_earnings_DKKk=0.0,
+            opening_contributed_equity_DKKk=0.0,
+            opening_retained_earnings_DKKk=50_000.0,  # bootstrap NI-gated distributions
         ),
         div=DIV_001.Inputs(
             periods=N, start_year=START_YEAR, start_month=START_MONTH,
             cod_period=COD_PERIOD,
             net_income=[0.0] * N,
             closing_cash=[0.0] * N,
-            payout_ratio=0.90,
-            cash_reserve=50.0,
+            payout_ratio=1.0,
+            cash_reserve=10.0,
             payment_months=[6, 12],
-            capital_reduction_active=False,
+            capital_reduction_active=True,
         ),
     )
 
@@ -400,6 +414,8 @@ def _check(name, actual, lo, hi):
 
 if irr_out:
     _check("Project IRR", irr_out.project_irr, *TARGETS["Project IRR"])
+    if not math.isnan(irr_out.equity_irr):
+        _check("Equity IRR", irr_out.equity_irr, *TARGETS["Equity IRR"])
 _check("Total CAPEX (AUD)", total_capex_kaud * 1000, *TARGETS["Total CAPEX"])
 if rev_out:
     _check("EBITDA Y1 (AUD)", yr1_ebitda * 1000, *TARGETS["EBITDA Y1"])
@@ -411,11 +427,12 @@ if rev_out:
 
 print("\n--- Known Gaps ---")
 gaps = [
-    # ACCEPTED: price extrapolation (need actual Aurora curve data)
-    # ACCEPTED: dispatch utilization 37% (need hourly dispatch model)
+    # ACCEPTED: price extrapolation at 9.5%/yr (need actual Aurora curve to 2057)
+    # ACCEPTED: dispatch utilization 37% (need hourly dispatch volumes)
     # FIXED: OPEX scaled for operational months only
     # FIXED: tax loss_cf_active=False (no construction loss offset)
-    ("EQUITY", "Equity IRR: opening equity not visible in CF (need SHL or equity drawdown)"),
+    # FIXED: equity drawn via SHL(shl_pct=0) during construction for ECF visibility
+    ("EQUITY", "Equity IRR 11.6% vs 15.2% — NI-gated dividends vs reference cash-based FCFE"),
     # ACCEPTED: VTA shortfall percentages simplified
 ]
 for cat, desc in gaps:

@@ -7,6 +7,7 @@
     "OPEX_002",
     "CAPEX_001",
     "DEBT_001",
+    "SHL_001",
     "TAX_AU_001",
     "PL_001",
     "CF_001",
@@ -16,7 +17,7 @@
   ],
   "actuals": {
     "project_irr": 0.09971457691108832,
-    "equity_irr": NaN,
+    "equity_irr": 0.11612362266582577,
     "total_capex_aud": 107617921.0,
     "ebitda_y1_aud": 12140310.917569092,
     "tax_y1_aud": 1330711.3231181565
@@ -24,7 +25,7 @@
   "gaps": [
     {
       "category": "EQUITY",
-      "description": "Equity IRR: opening equity not visible in CF (need SHL or equity drawdown)"
+      "description": "Equity IRR 11.6% vs 15.2% \u2014 NI-gated dividends vs reference cash-based FCFE"
     }
   ]
 }
