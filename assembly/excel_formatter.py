@@ -1,16 +1,21 @@
 """
 assembly/excel_formatter.py
 
-EE/F1F9 format standard — visual formatting layer for the Excel workbook.
+Visual formatting layer for the Excel workbook.
 Applied AFTER all data is written. Never changes cell values (except section
 header labels written into empty rows).
 
-Hybrid of two reverse-engineered reference models:
-  EE Holsted Hybrid (PwC DK): fill-based structure colors
-  F1F9 Renewables Template:   font-color data flow coding
+Two style modes:
+  FormatStyle.F1F9       — clean F1F9 renewables modelling standard (default)
+  FormatStyle.EE_LEGACY  — EE/PwC fill-based section coloring
+
+CREATED:  2026-03-17
+MODIFIED: 2026-03-30
 """
 
 from __future__ import annotations
+
+from enum import Enum
 
 from openpyxl.styles import PatternFill, Font, Border, Side
 from openpyxl.utils import get_column_letter
@@ -19,6 +24,18 @@ from openpyxl.worksheet.page import PageMargins
 from assembly.cell_mapper import (
     ROW_MAP, COL_LABEL, COL_UNIT, COL_TOTAL, COL_PERIOD_0, COL_SPACER,
 )
+
+
+# ============================================================================
+# FORMAT STYLE CONFIG
+# ============================================================================
+
+class FormatStyle(str, Enum):
+    F1F9 = "f1f9"          # clean, minimal, professional (default)
+    EE_LEGACY = "ee"       # EE/PwC teal/grey section fills
+
+# Module-level default — can be overridden by caller
+DEFAULT_STYLE = FormatStyle.F1F9
 
 # ============================================================================
 # COLOR CONSTANTS — EE FORMAT STANDARD
@@ -53,8 +70,8 @@ FILL_COVER_HEADER   = "008080"  # teal   — project banner
 FILL_COVER_KPI      = "EBF3FB"  # light blue — KPI block background
 FILL_COVER_KEY_ROW  = "F2F2F2"  # light grey — color key legend rows
 
-# Tab colors by sheet category
-TAB_COLORS = {
+# Tab colors by sheet category — EE legacy
+TAB_COLORS_EE = {
     "Cover":      "008080",  # teal    — matches banner fill
     "Revenue":    "28837D",  # dark teal  — calculation sheets
     "Costs":      "28837D",
@@ -64,14 +81,45 @@ TAB_COLORS = {
     "Summary":    "1F4E79",  # navy    — summary/KPI
 }
 
+# Tab colors — F1F9 convention
+TAB_COLORS_F1F9 = {
+    "Cover":      "FFFFFF",  # white
+    "Revenue":    None,      # default (no color)
+    "Costs":      None,
+    "Debt":       None,
+    "FS_Monthly": "99CCFF",  # pale blue
+    "FS_Annual":  "99CCFF",
+    "Summary":    "CCFF99",  # pale green
+}
+
+# Alias for backward compat
+TAB_COLORS = TAB_COLORS_EE
+
+
+# ============================================================================
+# FONT CONSTANTS
+# ============================================================================
+
+# F1F9 uses Arial; EE_LEGACY uses Calibri
+FONT_NAME_F1F9 = "Arial"
+FONT_NAME_EE = "Calibri"
+
+def _font_name(style: FormatStyle = None) -> str:
+    s = style or DEFAULT_STYLE
+    return FONT_NAME_F1F9 if s == FormatStyle.F1F9 else FONT_NAME_EE
+
 
 # ============================================================================
 # NUMBER FORMAT CONSTANTS
 # ============================================================================
 
-FMT_DKKK    = '#,##0'          # DKKk values (no decimals — cleaner at scale)
+# F1F9 format: alignment-padded for parenthesis columns
+FMT_DKKK_F1F9 = '#,##0_);(#,##0);"-  ";" "@" "'
+FMT_DKKK_EE   = '#,##0'
+
+FMT_DKKK    = '#,##0'          # default (overridden per style in apply)
 FMT_PCT     = '0.0%'           # percentages
-FMT_RATIO   = '0.00x'          # DSCR, coverage ratios
+FMT_RATIO   = '0.00"x"'        # DSCR, coverage ratios
 FMT_FACTOR  = '0.000'          # indexation factors, betas
 FMT_INTEGER = '#,##0'          # MWh, periods, years
 FMT_DATE    = 'DD-MMM-YY'      # period end dates (row 2)
@@ -150,8 +198,8 @@ SECTION_HEADER_ROWS = {
     "FS_Annual":  {15: "Cash Flow", 33: "Balance Sheet"},
 }
 
-# Row height spec (points)
-ROW_HEIGHTS = {
+# Row height spec (points) — EE legacy
+ROW_HEIGHTS_EE = {
     "banner":         22,   # rows 1-2: project name, technology/market
     "sub_banner":     18,   # row 3: phase stripe / scenario label
     "year_row":       15,   # row 4: calendar year
@@ -162,6 +210,22 @@ ROW_HEIGHTS = {
     "subtotal":       16,   # EBITDA, EBIT, CFO etc.
     "total":          17,   # net_income, closing_cash etc.
 }
+
+# Row height spec — F1F9 (tighter)
+ROW_HEIGHTS_F1F9 = {
+    "banner":         25.15,
+    "sub_banner":     13.05,
+    "year_row":       13.05,
+    "col_header":     13.05,
+    "spacer":          5.25,
+    "section_header": 13.05,
+    "data":           13.05,
+    "subtotal":       13.05,
+    "total":          13.05,
+}
+
+# Backward compat alias
+ROW_HEIGHTS = ROW_HEIGHTS_EE
 
 
 # ============================================================================
@@ -183,8 +247,8 @@ def _fill(hex_color: str) -> PatternFill:
 
 
 def _font(hex_color: str = FONT_DEFAULT, bold: bool = False,
-          size: int = 10) -> Font:
-    return Font(color=hex_color, bold=bold, name="Calibri", size=size)
+          size: int = 10, style: FormatStyle = None) -> Font:
+    return Font(color=hex_color, bold=bold, name=_font_name(style), size=size)
 
 
 def _border_subtotal() -> Border:
@@ -426,32 +490,24 @@ def _apply_print_setup(ws) -> None:
     )
 
 
-def _apply_tab_colors(wb) -> None:
-    """Apply tab colors by sheet category."""
-    for sheet_name, color in TAB_COLORS.items():
-        if sheet_name in wb.sheetnames:
-            wb[sheet_name].sheet_properties.tabColor = color
-
-
 # ============================================================================
 # PUBLIC API
 # ============================================================================
 
-def apply_formatting(wb, result) -> None:
-    """Apply EE/F1F9 format standard to a fully written workbook.
+def apply_formatting(wb, result, style: FormatStyle = None) -> None:
+    """Apply format standard to a fully written workbook.
 
-    Call order is strict — do not reorder:
-      1. _apply_number_formats   : canonical formats before any styling
-      2. _format_header_rows     : slate header row, phase stripe
-      3. _format_data_rows       : font colors, col J fill, borders
-      4. _format_section_headers : teal section label rows
-      5. _apply_row_grouping     : collapse detail rows by module section
-      6. _apply_row_heights      : heights by row type
-      7. _apply_print_setup      : landscape A3, repeat rows/cols
+    Args:
+        wb: openpyxl Workbook
+        result: AssemblyResult with periods/start_year/start_month
+        style: FormatStyle.F1F9 (default) or FormatStyle.EE_LEGACY
 
-    Number formats must be first so subsequent font/fill passes do not
-    accidentally reset format properties. Tab colors are always last.
+    Call order is strict — do not reorder.
     """
+    s = style or DEFAULT_STYLE
+    global ROW_HEIGHTS
+    ROW_HEIGHTS = ROW_HEIGHTS_F1F9 if s == FormatStyle.F1F9 else ROW_HEIGHTS_EE
+
     CALC_SHEETS = ["Revenue", "Costs", "Debt", "FS_Monthly", "FS_Annual"]
     n = result.periods
 
@@ -460,7 +516,6 @@ def apply_formatting(wb, result) -> None:
             continue
         ws = wb[sheet_name]
 
-        # Compute n_cols: months for monthly sheets, years for FS_Annual
         if sheet_name == "FS_Annual":
             years = set()
             for p in range(n):
@@ -469,24 +524,105 @@ def apply_formatting(wb, result) -> None:
         else:
             n_cols = n
 
-        _apply_number_formats(ws, sheet_name, n_cols)   # ALWAYS FIRST
+        _apply_number_formats(ws, sheet_name, n_cols)
         _format_header_rows(ws, n_cols)
         _format_data_rows(ws, sheet_name, n_cols)
-        _format_section_headers(ws, sheet_name)
-        _format_subsection_labels(ws, sheet_name)
+        if s == FormatStyle.EE_LEGACY:
+            _format_section_headers(ws, sheet_name)
+            _format_subsection_labels(ws, sheet_name)
         _apply_row_grouping(ws, sheet_name)
         _apply_row_heights(ws, sheet_name)
         _apply_print_setup(ws)
 
-    # Cover and Summary: portrait A4, fit to one page, no repeat rows/cols
     for sheet_name in ["Cover", "Summary"]:
         if sheet_name not in wb.sheetnames:
             continue
         ws = wb[sheet_name]
         ws.page_setup.orientation = "portrait"
-        ws.page_setup.paperSize   = 9        # A4
-        ws.page_setup.fitToWidth  = 1
+        ws.page_setup.paperSize = 9
+        ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 1
         ws.sheet_properties.pageSetUpPr.fitToPage = True
 
-    _apply_tab_colors(wb)   # ALWAYS LAST
+    _apply_tab_colors(wb, s)
+
+    # Add Style Guide sheet in F1F9 mode
+    if s == FormatStyle.F1F9:
+        _add_style_guide(wb, s)
+
+
+def _apply_tab_colors(wb, style: FormatStyle = None) -> None:
+    """Apply tab colors by sheet category and style."""
+    s = style or DEFAULT_STYLE
+    colors = TAB_COLORS_F1F9 if s == FormatStyle.F1F9 else TAB_COLORS_EE
+    for sheet_name, color in colors.items():
+        if sheet_name in wb.sheetnames and color:
+            wb[sheet_name].sheet_properties.tabColor = color
+
+
+def _add_style_guide(wb, style: FormatStyle) -> None:
+    """Add a Style Guide sheet demonstrating the formatting standard."""
+    ws = wb.create_sheet("Style Guide")
+    fname = _font_name(style)
+
+    ws.column_dimensions['E'].width = 40.5
+    ws.column_dimensions['F'].width = 12.5
+    ws.column_dimensions['L'].width = 14
+    ws.row_dimensions[1].height = 25.15
+
+    ws.cell(row=2, column=5, value="Style Guide -- F1F9 Layout Standard").font = Font(
+        name=fname, bold=True, size=10)
+
+    # Font Colors section
+    ws.cell(row=4, column=5, value="FONT COLORS").font = Font(name=fname, bold=True)
+    ws.cell(row=5, column=5, value="Input value (hardcoded)").font = Font(name=fname, color="0000FF")
+    ws.cell(row=5, column=12, value=100).font = Font(name=fname, color="0000FF")
+    ws.cell(row=6, column=5, value="Cross-sheet reference").font = Font(name=fname, color="0000FF")
+    ws.cell(row=6, column=12, value="=Rev!L11").font = Font(name=fname, color="0000FF")
+    ws.cell(row=7, column=5, value="Within-sheet calculation").font = Font(name=fname, color="000000")
+    ws.cell(row=7, column=12, value="=L5+L6").font = Font(name=fname)
+    ws.cell(row=8, column=5, value="Output / export row").font = Font(name=fname, color="FF0000")
+    ws.cell(row=8, column=12, value="=SUM(L5:L7)").font = Font(name=fname, color="FF0000")
+
+    # Row Types section
+    ws.cell(row=10, column=5, value="ROW TYPES").font = Font(name=fname, bold=True)
+    ws.cell(row=11, column=5, value="Section header").font = Font(name=fname, bold=True)
+    ws.cell(row=12, column=5, value="Data row").font = Font(name=fname)
+    ws.cell(row=13, column=5, value="Data row").font = Font(name=fname)
+    thin = Side(border_style="thin")
+    ws.cell(row=14, column=5, value="Subtotal").font = Font(name=fname, bold=True)
+    ws.cell(row=14, column=5).border = Border(top=thin)
+    ws.cell(row=14, column=12).border = Border(top=thin)
+    ws.row_dimensions[15].height = 5.25
+    ws.cell(row=16, column=5, value="Grand total").font = Font(name=fname, bold=True)
+    ws.cell(row=16, column=5).border = Border(top=thin, bottom=thin)
+    ws.cell(row=16, column=12).border = Border(top=thin, bottom=thin)
+
+    # Number Formats section
+    f1f9_fmt = '#,##0_);(#,##0);"-  ";" "@" "'
+    ws.cell(row=18, column=5, value="NUMBER FORMATS").font = Font(name=fname, bold=True)
+    ws.cell(row=19, column=5, value="Positive kEUR").font = Font(name=fname)
+    ws.cell(row=19, column=12, value=1234).number_format = f1f9_fmt
+    ws.cell(row=20, column=5, value="Negative kEUR").font = Font(name=fname)
+    ws.cell(row=20, column=12, value=-1234).number_format = f1f9_fmt
+    ws.cell(row=21, column=5, value="Zero").font = Font(name=fname)
+    ws.cell(row=21, column=12, value=0).number_format = f1f9_fmt
+    ws.cell(row=22, column=5, value="Percentage").font = Font(name=fname)
+    ws.cell(row=22, column=12, value=0.05).number_format = '0.0%'
+    ws.cell(row=23, column=5, value="Ratio").font = Font(name=fname)
+    ws.cell(row=23, column=12, value=1.35).number_format = '0.00"x"'
+    ws.cell(row=24, column=5, value="Date").font = Font(name=fname)
+    from datetime import date
+    ws.cell(row=24, column=12, value=date(2026, 3, 1)).number_format = 'MMM-YY'
+
+    # Column Layout section
+    ws.cell(row=26, column=5, value="COLUMN LAYOUT").font = Font(name=fname, bold=True)
+    for i, desc in enumerate([
+        "A-D: Spacers (1.33 wide)",
+        "E: Labels (40.5 wide)",
+        "F: Constants (12.5 wide)",
+        "G: Units (14.5 wide)",
+        "H: Notes (hidden)",
+        "L+: Time series data (11 wide)",
+    ]):
+        ws.cell(row=27+i, column=5, value=desc).font = Font(name=fname)

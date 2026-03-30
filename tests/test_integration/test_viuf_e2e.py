@@ -219,7 +219,7 @@ def test_no_warnings_for_full_config(viuf_result):
 
 def test_xlsx_file_has_all_sheets(viuf_workbook):
     wb, _ = viuf_workbook
-    expected = {"Assumptions", "Inputs"} | set(SHEETS)
+    expected = {"Assumptions", "Inputs", "Style Guide"} | set(SHEETS)
     assert set(wb.sheetnames) == expected
 
 

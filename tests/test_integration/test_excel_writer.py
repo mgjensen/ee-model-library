@@ -109,13 +109,13 @@ def test_file_is_valid_xlsx(written_wb):
 
 def test_all_sheets_present(written_wb):
     wb, *_ = written_wb
-    expected = {"Assumptions", "Inputs"} | set(SHEETS)
+    expected = {"Assumptions", "Inputs", "Style Guide"} | set(SHEETS)
     assert set(wb.sheetnames) == expected
 
 
 def test_sheet_order(written_wb):
     wb, *_ = written_wb
-    expected = ["Assumptions", "Inputs"] + SHEETS
+    expected = ["Assumptions", "Inputs"] + SHEETS + ["Style Guide"]
     assert wb.sheetnames == expected
 
 
