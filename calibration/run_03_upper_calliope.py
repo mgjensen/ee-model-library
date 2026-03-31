@@ -1,5 +1,5 @@
 """
-Calibration Run #6 -- Upper Calliope PV+BESS (AU, QLD)
+Calibration Run #3 -- Upper Calliope PV+BESS (AU, QLD)
 
 1,500 MWp PV + 550 MW / 2h BESS, Queensland, Australia.
 Engine-generated model via assembly/engine.py + write_workbook().
@@ -140,7 +140,7 @@ def _bess_revenue(n):
 # ============================================================================
 
 print("=" * 60)
-print("Upper Calliope PV+BESS -- Calibration Run #6")
+print("Upper Calliope PV+BESS -- Calibration Run #3")
 print("=" * 60)
 
 try:
