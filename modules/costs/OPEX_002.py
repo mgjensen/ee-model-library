@@ -2,10 +2,10 @@
 MODULE_ID:    OPEX_002
 VERSION:      1.0
 TIER:         detailed
-MARKETS:      ["DK", "DE", "*"]
+MARKETS:      ["DK", "DE", "AU", "*"]
 TECHNOLOGIES: ["BESS"]
 CREATED:      2026-03-17
-MODIFIED:     2026-03-17
+MODIFIED:     2026-04-01
 
 BESS OPEX calculation — 4 sub-components per EE_MODEL_BUILD_SPEC.md §6.2.
 
@@ -37,6 +37,21 @@ class ComponentRate(BaseModel):
     annual_DKKk: float = Field(0.0, description="Base annual cost DKKk (pre-inflation)")
     inflation_start_year: int = Field(2025, description="Year from which indexation compounds")
     indexation_start_factor: float = Field(1.0, description="Pre-indexation multiplier at period 0")
+
+
+class NamedComponent(BaseModel):
+    """Named fixed OPEX component (e.g. ltsa, fire_levy, pilor)."""
+    name: str
+    rate: ComponentRate
+
+
+class VariableComponent(BaseModel):
+    """Variable OPEX component — cost_per_unit x volume per period."""
+    name: str
+    cost_per_unit: float = 0.0
+    volume: list[float]       # monthly, length=periods
+    inflation_start_year: int = 2025
+    indexation_start_factor: float = 1.0
 
 
 # ============================================================================
@@ -72,12 +87,24 @@ class Inputs(BaseModel):
     # 4. Other — fixed annual, indexed
     other: ComponentRate = Field(default_factory=ComponentRate)
 
+    # 5. Extra fixed components (extensible list)
+    extra_components: list[NamedComponent] = Field(default_factory=list)
+
+    # 6. Variable components (volume-based)
+    variable_components: list[VariableComponent] = Field(default_factory=list)
+
     @model_validator(mode="after")
     def _validate(self) -> Self:
         if self.trading_cost_DKK_per_MWh > 0 and len(self.discharge_volume_MWh) != self.periods:
             raise ValueError(
                 f"discharge_volume_MWh length {len(self.discharge_volume_MWh)} != periods {self.periods}"
             )
+        for vc in self.variable_components:
+            if len(vc.volume) != self.periods:
+                raise ValueError(
+                    f"variable_component '{vc.name}' volume length "
+                    f"{len(vc.volume)} != periods {self.periods}"
+                )
         return self
 
 
@@ -87,6 +114,9 @@ class Outputs(BaseModel):
     insurance: list[float]
     trading_costs: list[float]
     other: list[float]
+
+    extra_costs: dict[str, list[float]]       # per named extra component
+    variable_costs: dict[str, list[float]]    # per variable component
 
     total_opex: list[float]       # sum across all components per period
 
@@ -180,9 +210,28 @@ def calculate(inputs: Inputs) -> Outputs:
     # 4. Other
     other = _fixed_component(inputs.other, yg, n, ir)
 
+    # 5. Extra fixed components
+    extra_costs: dict[str, list[float]] = {}
+    for ec in inputs.extra_components:
+        extra_costs[ec.name] = _fixed_component(ec.rate, yg, n, ir)
+
+    # 6. Variable components
+    variable_costs: dict[str, list[float]] = {}
+    for vc in inputs.variable_components:
+        costs = [0.0] * n
+        for p in range(n):
+            year = inputs.start_year + (inputs.start_month - 1 + p) // 12
+            factor = _indexation_factor(
+                year, vc.inflation_start_year, vc.indexation_start_factor, ir
+            )
+            costs[p] = vc.volume[p] * vc.cost_per_unit * factor / 1000.0
+        variable_costs[vc.name] = costs
+
     # Total OPEX per period
     total = [
         om[p] + insurance[p] + trading[p] + other[p]
+        + sum(ec[p] for ec in extra_costs.values())
+        + sum(vc[p] for vc in variable_costs.values())
         for p in range(n)
     ]
 
@@ -199,6 +248,8 @@ def calculate(inputs: Inputs) -> Outputs:
         insurance=insurance,
         trading_costs=trading,
         other=other,
+        extra_costs=extra_costs,
+        variable_costs=variable_costs,
         total_opex=total,
         annual_opex=annual,
         total_opex_lifetime=sum(total),
@@ -230,4 +281,8 @@ def get_excel_formulas(refs: dict) -> dict:
         "total_opex": (
             f"=SUM({r['om']}:{r['other']})"
         ),
+        **({"extra_component": f"={r['extra_annual']}*{r['indexation_factor']}/12"}
+           if "extra_annual" in r else {}),
+        **({"variable_component": f"={r['var_volume']}*{r['var_rate']}*{r['indexation_factor']}/1000"}
+           if "var_volume" in r else {}),
     }

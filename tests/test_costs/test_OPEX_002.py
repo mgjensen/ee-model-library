@@ -3,6 +3,8 @@
 import pytest
 from modules.costs.OPEX_002 import (
     ComponentRate,
+    NamedComponent,
+    VariableComponent,
     Inputs,
     Outputs,
     calculate,
@@ -337,3 +339,93 @@ def test_get_excel_formulas_keys():
     for key in ("indexation_factor", "fixed_component_monthly", "trading_costs", "total_opex"):
         assert key in formulas
         assert formulas[key].startswith("=")
+
+
+# ---------------------------------------------------------------------------
+# Extra + variable component tests
+# ---------------------------------------------------------------------------
+
+def _nc(name="ltsa", annual=2_400.0, inf_start=2025, start_factor=1.0):
+    return NamedComponent(
+        name=name,
+        rate=ComponentRate(annual_DKKk=annual, inflation_start_year=inf_start,
+                           indexation_start_factor=start_factor),
+    )
+
+
+def _vc(name="fcas_costs", cost_per_unit=5.0, volume=None, n=24,
+        inf_start=2025, start_factor=1.0):
+    return VariableComponent(
+        name=name, cost_per_unit=cost_per_unit,
+        volume=volume or [100.0] * n,
+        inflation_start_year=inf_start,
+        indexation_start_factor=start_factor,
+    )
+
+
+def test_extra_empty():
+    out_base = calculate(_base_inputs(om_annual=12_000.0, inflation_rate=0.0))
+    out_ext = calculate(_base_inputs(om_annual=12_000.0, inflation_rate=0.0,
+                                     extra_components=[]))
+    assert out_ext.extra_costs == {}
+    assert out_ext.variable_costs == {}
+    assert out_ext.total_opex == out_base.total_opex
+
+
+def test_extra_single():
+    out = calculate(_base_inputs(om_annual=0.0, inflation_rate=0.0,
+                                 extra_components=[_nc("ltsa", annual=1_200.0)]))
+    assert "ltsa" in out.extra_costs
+    assert out.extra_costs["ltsa"][0] == pytest.approx(100.0)  # 1200/12
+    assert out.total_opex[0] == pytest.approx(100.0)
+
+
+def test_extra_multiple():
+    extras = [
+        _nc("ltsa", annual=1_200.0),
+        _nc("fire_levy", annual=600.0),
+        _nc("pilor", annual=2_400.0),
+        _nc("land_lease", annual=3_600.0),
+        _nc("network", annual=1_800.0),
+    ]
+    out = calculate(_base_inputs(om_annual=0.0, inflation_rate=0.0,
+                                 extra_components=extras))
+    assert len(out.extra_costs) == 5
+    expected_total = sum(ec.rate.annual_DKKk / 12.0 for ec in extras)
+    assert out.total_opex[0] == pytest.approx(expected_total)
+
+
+def test_variable_single():
+    vol = [200.0] * 24
+    out = calculate(_base_inputs(om_annual=0.0, inflation_rate=0.0,
+                                 variable_components=[_vc("fcas", 10.0, vol)]))
+    # 200 * 10 / 1000 = 2.0 DKKk
+    assert "fcas" in out.variable_costs
+    assert out.variable_costs["fcas"][0] == pytest.approx(2.0)
+    assert out.total_opex[0] == pytest.approx(2.0)
+
+
+def test_variable_plus_extras():
+    extras = [_nc("ltsa", annual=1_200.0)]
+    variables = [_vc("fcas", 10.0, [200.0] * 24)]
+    out = calculate(_base_inputs(om_annual=0.0, inflation_rate=0.0,
+                                 extra_components=extras,
+                                 variable_components=variables))
+    expected = 100.0 + 2.0  # ltsa + fcas
+    assert out.total_opex[0] == pytest.approx(expected)
+
+
+def test_variable_bad_length():
+    with pytest.raises(ValueError, match="variable_component.*volume length"):
+        _base_inputs(variable_components=[_vc("bad", 5.0, [100.0] * 12, n=12)])
+
+
+def test_sensitivity_applies_to_extras():
+    extras = [_nc("ltsa", annual=1_200.0)]
+    variables = [_vc("fcas", 10.0, [200.0] * 24)]
+    out = calculate(_base_inputs(om_annual=0.0, inflation_rate=0.0,
+                                 extra_components=extras,
+                                 variable_components=variables,
+                                 sensitivity_factor=1.5))
+    expected = (100.0 + 2.0) * 1.5
+    assert out.total_opex[0] == pytest.approx(expected)
