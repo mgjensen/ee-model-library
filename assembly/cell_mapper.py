@@ -55,7 +55,7 @@ COL_WIDTHS = {
     # L+ set dynamically at 11.46 each
 }
 
-HIDDEN_COLS = {8, 9}  # H and I, outline level 1
+HIDDEN_COLS = {8}  # H only (Notes); I (Source) visible in F1F9 mode
 
 
 # ============================================================================

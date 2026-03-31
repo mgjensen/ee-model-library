@@ -1089,7 +1089,7 @@ def run(config: ProjectConfig) -> AssemblyResult:
             _capex_by_bucket_au = tax_au_inp.capex_by_bucket
         tax_au_inp = tax_au_inp.model_copy(update={
             "ebitda": _ebitda_au,
-            "interest_expense": _int_au,
+            "total_interest": _int_au,
             "capex_by_bucket": _capex_by_bucket_au,
         })
         out["TAX_AU_001"] = TAX_AU_001.calculate(

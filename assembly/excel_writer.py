@@ -464,7 +464,7 @@ def _write_fs_annual(ws, result: AssemblyResult, config: ProjectConfig) -> None:
                     value=_safe(tot)).number_format = _num_format(field)
 
     _apply_column_formatting(ws, n_years)
-    ws.freeze_panes = "L5"
+    ws.freeze_panes = "L6"
 
 
 def _write_summary(ws, result: AssemblyResult) -> None:
@@ -1005,7 +1005,7 @@ def write_workbook(
             _write_wacc_scalars(ws, result)
         _write_subsection_labels(ws, sheet_name)
         _apply_column_formatting(ws, n)
-        ws.freeze_panes = "L5"
+        ws.freeze_panes = "L6" if sheet_name == "FS_Monthly" else "L5"
 
     # Step 4b: Per-tech FinStat sheets (split-tech mode only)
     _per_tech_extra_rm: dict = {}

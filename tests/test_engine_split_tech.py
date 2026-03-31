@@ -214,9 +214,9 @@ def test_per_tech_tax():
     tax_cfg = TAX_AU_001.Inputs(
         periods=N, start_year=SY, start_month=SM,
         tax_rate=0.30,
-        ebitda=[0.0]*N, interest_expense=[0.0]*N,
+        ebitda=[0.0]*N, total_interest=[0.0]*N,
         capex_by_bucket=[[0.0]*N for _ in range(4)],
-        depreciation_lifetimes=[30, 30, 30, 30],
+        depreciation_rates=[0.25, 0.25, 0.25, 0.25],
     )
     entities = [
         TechEntity(

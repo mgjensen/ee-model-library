@@ -18,7 +18,7 @@ from __future__ import annotations
 from enum import Enum
 
 from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
-from openpyxl.formatting.rule import CellIsRule
+from openpyxl.formatting.rule import CellIsRule, FormulaRule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.page import PageMargins
 
@@ -129,11 +129,11 @@ FMT_DKKK_EE   = '#,##0'
 # Active defaults (used by _get_field_format)
 FMT_DKKK    = '#,##0'          # overridden per style in apply
 FMT_PCT     = '0.0%'           # percentages
-FMT_RATIO   = '0.00"x"'        # DSCR, coverage ratios
-FMT_FACTOR  = '0.000'          # indexation factors, betas
-FMT_INTEGER = '#,##0'          # MWh, periods, years
+FMT_RATIO   = '0.00"x"_);\\(0.00"x"\\);"-  ";" "@" "'        # DSCR, coverage ratios
+FMT_FACTOR  = '0.000_);\\(0.000\\);"-  ";" "@" "'          # indexation factors, betas
+FMT_INTEGER = '#,##0_);\\(#,##0\\);"-  ";" "@" "'          # MWh, periods, years
 FMT_DATE    = 'DD-MMM-YY'      # period end dates (row 2) — EE default
-FMT_DATE_F1F9_STD = 'dd mmm yy'  # F1F9 standard: "30 Apr 25"
+FMT_DATE_F1F9_STD = 'dd mmm yy_);\\(###0\\);"-  ";" "@" "'  # F1F9 standard: "30 Apr 25"
 FMT_YEAR    = '0'              # year integers
 FMT_GENERAL = 'General'
 
@@ -290,12 +290,12 @@ def _border_f1f9_row_top() -> Border:
     return Border(top=_SIDE_GREY)
 
 def _border_f1f9_subtotal() -> Border:
-    """F1F9: thin black bottom border for subtotals."""
-    return Border(bottom=_SIDE_BLACK_THIN)
+    """F1F9: thin black top + thin black bottom border for subtotals."""
+    return Border(top=_SIDE_BLACK_THIN, bottom=_SIDE_BLACK_THIN)
 
 def _border_f1f9_total() -> Border:
-    """F1F9: medium black bottom border for grand totals."""
-    return Border(bottom=_SIDE_BLACK_MED)
+    """F1F9: thin black top + thin black bottom border for totals."""
+    return Border(top=_SIDE_BLACK_THIN, bottom=_SIDE_BLACK_THIN)
 
 
 # ============================================================================
@@ -400,10 +400,8 @@ def _format_section_headers(ws, sheet_name: str, style: FormatStyle = None) -> N
         if existing is not None:
             continue
         if s == FormatStyle.F1F9:
-            # F1F9: grey fill band, bold black text
-            for c in range(COL_LABEL, COL_UNIT + 1):
-                ws.cell(row=row_num, column=c).fill = _fill(FILL_SECTION_HEADER)
-                ws.cell(row=row_num, column=c).font = _font(bold=True, style=s)
+            # F1F9: bold text only, NO fill on section headers in calc sheets
+            ws.cell(row=row_num, column=COL_LABEL).font = _font(bold=True, style=s)
         else:
             # EE: teal fill, white text
             for c in range(COL_LABEL, COL_UNIT + 1):
@@ -580,9 +578,14 @@ def _apply_print_setup(ws, style: FormatStyle = None) -> None:
         ws.print_title_rows = "1:6"
         ws.print_title_cols = f"A:{last_frozen_col}"
 
-    ws.page_margins = PageMargins(
-        left=0.5, right=0.5, top=0.75, bottom=0.75, header=0.3, footer=0.3,
-    )
+    if s == FormatStyle.F1F9:
+        ws.page_margins = PageMargins(
+            left=0.748, right=0.748, top=0.984, bottom=0.984, header=0.512, footer=0.512,
+        )
+    else:
+        ws.page_margins = PageMargins(
+            left=0.5, right=0.5, top=0.75, bottom=0.75, header=0.3, footer=0.3,
+        )
 
 
 def _apply_conditional_formatting(ws, n_periods: int) -> None:
@@ -602,7 +605,7 @@ def _apply_conditional_formatting(ws, n_periods: int) -> None:
     # Green fill for "Operations" phase
     ws.conditional_formatting.add(
         phase_range,
-        CellIsRule(operator='equal', formula=['"Operations"'], fill=green_fill)
+        FormulaRule(formula=[f'L3="Operations"'], fill=green_fill)
     )
 
 

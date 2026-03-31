@@ -108,7 +108,9 @@ def _write_banner(ws, result, config) -> None:
             cell.fill = _fill(FILL_COVER_HEADER)
             cell.font = _font(FONT_WHITE, bold=True, size=12)
 
+    # E1: project name — F1F9 uses Arial 20pt bold
     ws.cell(row=1, column=_E, value=result.project_name)
+    ws.cell(row=1, column=_E).font = Font(name="Arial", size=20, bold=True, color=FONT_WHITE)
     tech = getattr(config, 'technology', 'PV')
     market = getattr(config, 'market', 'DK')
     ws.cell(row=2, column=_E, value=f"{tech} | {market}")
