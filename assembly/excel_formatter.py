@@ -625,6 +625,10 @@ def apply_formatting(wb, result, style: FormatStyle = None) -> None:
     ROW_HEIGHTS = ROW_HEIGHTS_F1F9 if s == FormatStyle.F1F9 else ROW_HEIGHTS_EE
 
     CALC_SHEETS = ["Revenue", "Costs", "Debt", "FS_Monthly", "FS_Annual"]
+    # Include per-tech FinStat sheets (same formatting as FS_Monthly)
+    for name in wb.sheetnames:
+        if name.endswith(".FinStat") and name not in CALC_SHEETS:
+            CALC_SHEETS.append(name)
     n = result.periods
 
     for sheet_name in CALC_SHEETS:
