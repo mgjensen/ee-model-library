@@ -597,8 +597,11 @@ def apply_formatting(wb, result, style: FormatStyle = None) -> None:
 
     _apply_tab_colors(wb, s)
 
-    # Add Style Guide sheet in F1F9 mode
+    # F1F9: gridlines off on all sheets, zoom 80%
     if s == FormatStyle.F1F9:
+        for ws in wb.worksheets:
+            ws.sheet_view.showGridLines = False
+            ws.sheet_view.zoomScale = 80
         _add_style_guide(wb, s)
 
 
