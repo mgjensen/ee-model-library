@@ -131,7 +131,8 @@ FMT_PCT     = '0.0%'           # percentages
 FMT_RATIO   = '0.00"x"'        # DSCR, coverage ratios
 FMT_FACTOR  = '0.000'          # indexation factors, betas
 FMT_INTEGER = '#,##0'          # MWh, periods, years
-FMT_DATE    = 'DD-MMM-YY'      # period end dates (row 2)
+FMT_DATE    = 'DD-MMM-YY'      # period end dates (row 2) — EE default
+FMT_DATE_F1F9_STD = 'dd mmm yy'  # F1F9 standard: "30 Apr 25"
 FMT_YEAR    = '0'              # year integers
 FMT_GENERAL = 'General'
 
@@ -405,7 +406,7 @@ def _format_subsection_labels(ws, sheet_name: str, style: FormatStyle = None) ->
 # LAYOUT FUNCTIONS (Prompt 3)
 # ============================================================================
 
-def _apply_number_formats(ws, sheet_name: str, n_cols: int) -> None:
+def _apply_number_formats(ws, sheet_name: str, n_cols: int, style: FormatStyle = None) -> None:
     """Apply canonical number formats to all time series and total cells.
 
     Iterates every row in ROW_MAP for this sheet and applies the correct
@@ -417,8 +418,12 @@ def _apply_number_formats(ws, sheet_name: str, n_cols: int) -> None:
     """
     logical = "Statements" if sheet_name in ("FS_Monthly", "FS_Annual") else sheet_name
 
+    s = style or DEFAULT_STYLE
     # Header row formats
-    date_fmt = FMT_DATE if sheet_name != "FS_Annual" else FMT_YEAR
+    if s == FormatStyle.F1F9:
+        date_fmt = FMT_DATE_F1F9_STD if sheet_name != "FS_Annual" else FMT_YEAR
+    else:
+        date_fmt = FMT_DATE if sheet_name != "FS_Annual" else FMT_YEAR
     for col in range(COL_PERIOD_0, COL_PERIOD_0 + n_cols):
         ws.cell(row=2, column=col).number_format = date_fmt
         ws.cell(row=4, column=col).number_format = FMT_YEAR
@@ -515,30 +520,36 @@ def _apply_row_heights(ws, sheet_name: str) -> None:
             ws.row_dimensions[r].height = ROW_HEIGHTS["spacer"]
 
 
-def _apply_print_setup(ws) -> None:
-    """Configure print settings for bank-grade output.
-
-    Landscape A3, fit to 1 page wide, repeat header rows and label
-    columns on every printed page.
-    """
+def _apply_print_setup(ws, style: FormatStyle = None) -> None:
+    """Configure print settings."""
+    s = style or DEFAULT_STYLE
     last_frozen_col = get_column_letter(COL_SPACER)  # K
 
     ws.page_setup.orientation = "landscape"
-    ws.page_setup.paperSize   = 8        # A3
-    ws.page_setup.fitToWidth  = 1        # 1 page wide
-    ws.page_setup.fitToHeight = 0        # unlimited pages tall
-    ws.page_setup.scale       = 100      # ignored when fitToPage=True
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.paperSize = 9 if s == FormatStyle.F1F9 else 8  # A4 for F1F9, A3 for EE
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
 
-    # Repeat rows 1-6 and cols A-K on every printed page
-    ws.print_title_rows = "1:6"
-    ws.print_title_cols = f"A:{last_frozen_col}"
+    if s == FormatStyle.F1F9:
+        ws.page_setup.scale = 55  # F1F9 standard: 55% to fit many columns
+        ws.print_title_rows = "1:4"  # F1F9: rows 1-4
+        ws.print_title_cols = f"A:{last_frozen_col}"  # A:K
+        # Headers/footers (F1F9 standard)
+        ws.oddHeader.center.text = "Sheet: &A"
+        ws.oddHeader.center.font = "Arial,Bold"
+        ws.oddHeader.center.size = 14
+        ws.oddFooter.left.text = "&F (Printed on &D at &T)"
+        ws.oddFooter.left.size = 12
+        ws.oddFooter.right.text = "Page &P of &N"
+        ws.oddFooter.right.size = 12
+    else:
+        ws.page_setup.scale = 100
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.print_title_rows = "1:6"
+        ws.print_title_cols = f"A:{last_frozen_col}"
 
-    # Margins in inches
     ws.page_margins = PageMargins(
-        left=0.5, right=0.5,
-        top=0.75, bottom=0.75,
-        header=0.3, footer=0.3,
+        left=0.5, right=0.5, top=0.75, bottom=0.75, header=0.3, footer=0.3,
     )
 
 
@@ -576,14 +587,14 @@ def apply_formatting(wb, result, style: FormatStyle = None) -> None:
         else:
             n_cols = n
 
-        _apply_number_formats(ws, sheet_name, n_cols)
+        _apply_number_formats(ws, sheet_name, n_cols, s)
         _format_header_rows(ws, n_cols, s)
         _format_data_rows(ws, sheet_name, n_cols, s)
         _format_section_headers(ws, sheet_name, s)
         _format_subsection_labels(ws, sheet_name, s)
         _apply_row_grouping(ws, sheet_name)
         _apply_row_heights(ws, sheet_name)
-        _apply_print_setup(ws)
+        _apply_print_setup(ws, s)
 
     for sheet_name in ["Cover", "Summary"]:
         if sheet_name not in wb.sheetnames:
