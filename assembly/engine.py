@@ -26,9 +26,10 @@ Execution order:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator as _model_validator
 
 import modules.market.PRICE_CURVES_001 as PRICE_CURVES_001
 import modules.core.WACC_001 as WACC_001
@@ -144,6 +145,28 @@ class StatementConfig(BaseModel):
     )
 
 
+class SPVStructure(str, Enum):
+    SINGLE = "single_spv"   # One entity, debt allocated pro-rata
+    DUAL = "dual_spv"       # Separate entities (Phase 2: NotImplementedError)
+
+
+class TechEntity(BaseModel):
+    """One technology within a hybrid project (split-tech mode)."""
+    tech_id: str = Field(..., description="Prefix for outputs: 'PV', 'BESS', 'WIND'")
+    technology: str = Field(..., description="Module type: 'PV', 'BESS', 'WIND'")
+    cod_period: int = Field(0, ge=0, description="0-based period of COD for this tech")
+    asset_life_years: int = Field(30, gt=0)
+
+    # Module configs — same types as top-level ProjectConfig
+    rev: Optional[Any] = None
+    opex: Optional[Any] = None
+    capex: Optional[Any] = None
+    bess_repow: Optional[Any] = None
+    constr_finance: Optional[Any] = None
+    tax_config: Optional[Any] = None
+    independent_tax: bool = True
+
+
 class ProjectConfig(BaseModel):
     """
     Top-level project configuration.
@@ -155,11 +178,18 @@ class ProjectConfig(BaseModel):
     The engine overrides periods / start_year / start_month from `timeline`
     before calling each module's calculate(), so these fields in sub-configs
     are ignored.
+
+    Split-tech mode: set `tech_entities` to a list of TechEntity objects.
+    The engine runs independent pipelines per technology and consolidates.
     """
     project_name: str
     market: str = "DK"
     technology: str = "PV"
     timeline: TimelineConfig
+
+    # Split-tech mode
+    tech_entities: Optional[list[TechEntity]] = None
+    spv_structure: SPVStructure = SPVStructure.SINGLE
 
     # Module configs — None = disabled
     price_curves: Optional[PRICE_CURVES_001.Inputs] = None  # PRICE_CURVES_001
@@ -200,6 +230,23 @@ class ProjectConfig(BaseModel):
     div: Optional[DIV_001.Inputs] = None  # DIV_001 — dividend distribution
     statements: StatementConfig = Field(default_factory=StatementConfig)
 
+    @_model_validator(mode="after")
+    def _validate_split_tech(self):
+        if self.tech_entities is not None:
+            top_level = [self.rev_pv, self.rev_bess, self.rev_wind,
+                         self.opex_pv, self.opex_bess, self.opex_wind]
+            if any(v is not None for v in top_level):
+                raise ValueError(
+                    "Cannot set both tech_entities and top-level rev_pv/rev_bess/"
+                    "opex_pv/opex_bess/rev_wind/opex_wind. Use tech_entities for "
+                    "split-tech mode or top-level fields for single-pipeline mode."
+                )
+            if self.spv_structure == SPVStructure.DUAL:
+                raise NotImplementedError(
+                    "dual_spv mode is not yet implemented. Use single_spv."
+                )
+        return self
+
 
 # ============================================================================
 # RESULT
@@ -218,6 +265,10 @@ class AssemblyResult:
     def get(self, module_id: str) -> Any:
         """Return output for a given module, or None if disabled."""
         return self.outputs.get(module_id)
+
+    def get_tech(self, tech_id: str, module_id: str) -> Any:
+        """Return per-tech output. E.g. result.get_tech('PV', 'PL_001')."""
+        return self.outputs.get(f"{tech_id}_{module_id}")
 
 
 # ============================================================================
@@ -249,6 +300,167 @@ def _add_series(*series: Optional[list[float]], n: int) -> list[float]:
 
 
 # ============================================================================
+# SPLIT-TECH HELPERS
+# ============================================================================
+
+# Map technology -> (rev_module, rev_module_id, opex_module, opex_module_id)
+_TECH_MODULE_MAP = {
+    "PV":   (REV_001, "REV_001", OPEX_001, "OPEX_001"),
+    "BESS": (REV_002, "REV_002", OPEX_002, "OPEX_002"),
+    "WIND": (REV_003, "REV_003", OPEX_003, "OPEX_003"),
+}
+
+
+def _run_per_tech(entity: TechEntity, tl: TimelineConfig, out: dict, result: AssemblyResult) -> None:
+    """Run revenue, OPEX, CAPEX, tax, and per-tech financial statements for one TechEntity."""
+    n = tl.periods
+    tid = entity.tech_id
+
+    # --- Revenue ---
+    rev_out = None
+    if entity.rev is not None:
+        tech_info = _TECH_MODULE_MAP.get(entity.technology)
+        if tech_info:
+            rev_mod, rev_id = tech_info[0], tech_info[1]
+            rev_out = rev_mod.calculate(_inject_timeline(entity.rev, tl))
+            out[f"{tid}_{rev_id}"] = rev_out
+
+    # --- OPEX ---
+    opex_out = None
+    if entity.opex is not None:
+        tech_info = _TECH_MODULE_MAP.get(entity.technology)
+        if tech_info:
+            opex_mod, opex_id = tech_info[2], tech_info[3]
+            opex_out = opex_mod.calculate(_inject_timeline(entity.opex, tl))
+            out[f"{tid}_{opex_id}"] = opex_out
+
+    # --- CAPEX ---
+    capex_out = None
+    if entity.capex is not None:
+        capex_out = CAPEX_001.calculate(_inject_timeline(entity.capex, tl))
+        out[f"{tid}_CAPEX_001"] = capex_out
+
+    # --- BESS Repowering ---
+    repow_out = None
+    if entity.bess_repow is not None:
+        repow_out = BESS_REPOW_001.calculate(_inject_timeline(entity.bess_repow, tl))
+        out[f"{tid}_BESS_REPOW_001"] = repow_out
+
+    # --- Construction Finance ---
+    if entity.constr_finance is not None:
+        cf_inp = entity.constr_finance
+        if capex_out and (not cf_inp.capex_monthly or all(c == 0 for c in cf_inp.capex_monthly)):
+            cf_inp = cf_inp.model_copy(update={"capex_monthly": capex_out.total_capex_monthly})
+        out[f"{tid}_CONSTR_FINANCE_001"] = CONSTR_FINANCE_001.calculate(
+            _inject_timeline(cf_inp, tl)
+        )
+
+    # --- Per-tech EBITDA ---
+    gross_rev = rev_out.net_revenue if rev_out else _zeros(n)
+    total_opex = opex_out.total_opex if opex_out else _zeros(n)
+
+    # --- Per-tech Tax ---
+    tax_out_tech = None
+    if entity.independent_tax and entity.tax_config is not None:
+        ebitda_tech = [gross_rev[p] - total_opex[p] for p in range(n)]
+        # Determine tax module from market
+        # For now: try all in fallback order
+        tax_inp = entity.tax_config
+        tax_inp = tax_inp.model_copy(update={
+            "ebitda": ebitda_tech,
+            "interest_expense": _zeros(n),  # per-tech: unlevered (no debt allocation)
+        })
+        if hasattr(tax_inp, 'capex_by_bucket'):
+            if not tax_inp.capex_by_bucket or all(all(v == 0 for v in b) for b in tax_inp.capex_by_bucket):
+                if capex_out:
+                    cm = capex_out.total_capex_monthly
+                    tax_inp = tax_inp.model_copy(update={
+                        "capex_by_bucket": [cm] + [_zeros(n) for _ in range(6)]
+                    })
+        # Try TAX_AU_001, TAX_LT_001, TAX_001 etc.
+        try:
+            tax_out_tech = TAX_AU_001.calculate(_inject_timeline(tax_inp, tl))
+            out[f"{tid}_TAX_AU_001"] = tax_out_tech
+        except Exception:
+            try:
+                tax_out_tech = TAX_001.calculate(_inject_timeline(tax_inp, tl))
+                out[f"{tid}_TAX_001"] = tax_out_tech
+            except Exception:
+                pass
+
+    # --- Per-tech depreciation ---
+    dep = tax_out_tech.tax_depreciation if tax_out_tech else _zeros(n)
+    if repow_out:
+        dep = [dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
+    tax_charge = tax_out_tech.tax_charge_accrued if tax_out_tech else _zeros(n)
+
+    # --- Per-tech PL_001 ---
+    pl_inputs = PL_001.Inputs(
+        periods=n, start_year=tl.start_year, start_month=tl.start_month,
+        gross_revenue=gross_rev,
+        total_opex=total_opex,
+        depreciation=dep,
+        interest_expense=_zeros(n),  # per-tech: no debt (Phase 1)
+        tax_charge=tax_charge,
+    )
+    pl_out = PL_001.calculate(pl_inputs)
+    out[f"{tid}_PL_001"] = pl_out
+
+    # --- Per-tech CF_001 (unlevered — no debt) ---
+    cf_capex = capex_out.total_capex_monthly if capex_out else _zeros(n)
+    if repow_out:
+        cf_capex = [cf_capex[p] + repow_out.repowering_cost_monthly[p] for p in range(n)]
+    cf_inputs = CF_001.Inputs(
+        periods=n, start_year=tl.start_year, start_month=tl.start_month,
+        net_income=pl_out.net_income,
+        depreciation=dep,
+        capex_monthly=cf_capex,
+        debt_drawdown=[],
+        principal_repayment=[],
+        interest_paid=_zeros(n),
+    )
+    cf_out = CF_001.calculate(cf_inputs)
+    out[f"{tid}_CF_001"] = cf_out
+
+    # --- Per-tech BS_001 (unlevered) ---
+    bs_inputs = BS_001.Inputs(
+        periods=n, start_year=tl.start_year, start_month=tl.start_month,
+        capex_monthly=cf_capex,
+        depreciation_monthly=dep,
+        closing_cash=cf_out.closing_cash,
+        debt_closing_balance=_zeros(n),
+        net_income=pl_out.net_income,
+    )
+    out[f"{tid}_BS_001"] = BS_001.calculate(bs_inputs)
+
+
+def _consolidate_split_tech(entities: list[TechEntity], out: dict, tl: TimelineConfig) -> None:
+    """Sum per-tech PL/CF/BS arrays into combined outputs at standard keys."""
+    n = tl.periods
+
+    # Aggregate PL inputs from per-tech PL outputs
+    combined_rev = _zeros(n)
+    combined_opex = _zeros(n)
+    combined_dep = _zeros(n)
+    combined_tax = _zeros(n)
+
+    for entity in entities:
+        tid = entity.tech_id
+        pl = out.get(f"{tid}_PL_001")
+        if pl:
+            combined_rev = [combined_rev[p] + pl.gross_revenue[p] for p in range(n)]
+            combined_opex = [combined_opex[p] + pl.total_opex[p] for p in range(n)]
+            combined_dep = [combined_dep[p] + pl.depreciation[p] for p in range(n)]
+            combined_tax = [combined_tax[p] + pl.tax_charge[p] for p in range(n)]
+
+    # Combined PL (interest added later by existing debt wiring)
+    out["_split_tech_rev"] = combined_rev
+    out["_split_tech_opex"] = combined_opex
+    out["_split_tech_dep"] = combined_dep
+    out["_split_tech_tax"] = combined_tax
+
+
+# ============================================================================
 # CORE RUN FUNCTION
 # ============================================================================
 
@@ -256,8 +468,8 @@ def run(config: ProjectConfig) -> AssemblyResult:
     """
     Execute all enabled modules in dependency order and return AssemblyResult.
 
-    Raises ValueError if a required upstream module is disabled when a
-    downstream module that depends on it is enabled.
+    If config.tech_entities is set, runs split-tech mode:
+    per-tech pipelines → consolidation → shared modules.
     """
     tl = config.timeline
     n = tl.periods
@@ -268,6 +480,18 @@ def run(config: ProjectConfig) -> AssemblyResult:
         start_month=tl.start_month,
     )
     out = result.outputs
+
+    # ------------------------------------------------------------------
+    # SPLIT-TECH GATE: if tech_entities is set, run per-tech pipelines
+    # ------------------------------------------------------------------
+    if config.tech_entities is not None:
+        # Phase 1: Per-tech revenue, OPEX, CAPEX, tax, PL, CF, BS
+        for entity in config.tech_entities:
+            _run_per_tech(entity, tl, out, result)
+        # Phase 2: Consolidate per-tech into combined arrays
+        _consolidate_split_tech(config.tech_entities, out, tl)
+        # Fall through to shared modules (WACC, DEBT, combined PL/CF/BS, IRR)
+        # The PL wiring below will detect _split_tech_rev and use it
 
     # ------------------------------------------------------------------
     # Step 0: PRICE_CURVES_001 — market price curves (feeds all modules)
@@ -644,28 +868,35 @@ def run(config: ProjectConfig) -> AssemblyResult:
     # ------------------------------------------------------------------
     # Step 9: PL_001 — P&L (fully wired)
     # ------------------------------------------------------------------
-    if any(k in out for k in ("TAX_001", "TAX_DE_001", "TAX_LT_001", "TAX_AU_001", "DEBT_001", "DEBT_SCULPT_001", "REV_001", "REV_002", "REV_003")):
-        rev_pv_net    = out["REV_001"].net_revenue  if "REV_001"  in out else None
-        rev_bess_net  = out["REV_002"].net_revenue  if "REV_002"  in out else None
-        rev_wind_net  = out["REV_003"].net_revenue  if "REV_003"  in out else None
-        opex_pv_tot   = out["OPEX_001"].total_opex  if "OPEX_001" in out else None
-        opex_bess_tot = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
-        opex_wind_tot = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
+    _split_tech_active = "_split_tech_rev" in out
+    if _split_tech_active or any(k in out for k in ("TAX_001", "TAX_DE_001", "TAX_LT_001", "TAX_AU_001", "DEBT_001", "DEBT_SCULPT_001", "REV_001", "REV_002", "REV_003")):
+        if _split_tech_active:
+            # Split-tech mode: use consolidated arrays from per-tech pipelines
+            gross_rev = out["_split_tech_rev"]
+            total_opex_combined = out["_split_tech_opex"]
+        else:
+            rev_pv_net    = out["REV_001"].net_revenue  if "REV_001"  in out else None
+            rev_bess_net  = out["REV_002"].net_revenue  if "REV_002"  in out else None
+            rev_wind_net  = out["REV_003"].net_revenue  if "REV_003"  in out else None
+            opex_pv_tot   = out["OPEX_001"].total_opex  if "OPEX_001" in out else None
+            opex_bess_tot = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
+            opex_wind_tot = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
+            gross_rev = _add_series(rev_pv_net, rev_bess_net, rev_wind_net, n=n)
+            total_opex_combined = _add_series(opex_pv_tot, opex_bess_tot, opex_wind_tot, n=n)
         tax_out = out.get("TAX_001")
         tax_de_out = out.get("TAX_DE_001")
         tax_lt_out = out.get("TAX_LT_001")
         tax_au_out = out.get("TAX_AU_001")
         debt_out = out.get("DEBT_001")
         sculpt_out = out.get("DEBT_SCULPT_001")
-
-        gross_rev = _add_series(rev_pv_net, rev_bess_net, rev_wind_net, n=n)
-        total_opex_combined = _add_series(opex_pv_tot, opex_bess_tot, opex_wind_tot, n=n)
         _tax_any = tax_out or tax_de_out or tax_lt_out or tax_au_out
-        dep = _tax_any.tax_depreciation if _tax_any else _zeros(n)
-        # Add BESS repowering accounting depreciation
-        repow_out = out.get("BESS_REPOW_001")
-        if repow_out:
-            dep = [dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
+        if _split_tech_active:
+            dep = out["_split_tech_dep"]
+        else:
+            dep = _tax_any.tax_depreciation if _tax_any else _zeros(n)
+            repow_out = out.get("BESS_REPOW_001")
+            if repow_out:
+                dep = [dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
         interest = debt_out.interest if debt_out else _zeros(n)
         # Add sculpted debt interest (accrued = expense for PL)
         if sculpt_out:
@@ -696,7 +927,10 @@ def run(config: ProjectConfig) -> AssemblyResult:
         if shl_out:
             interest = [interest[p] + (shl_out.interest[p] if p >= _cod else 0.0)
                         for p in range(n)]
-        tax_charge = _tax_any.tax_charge_accrued if _tax_any else _zeros(n)
+        if _split_tech_active:
+            tax_charge = out["_split_tech_tax"]
+        else:
+            tax_charge = _tax_any.tax_charge_accrued if _tax_any else _zeros(n)
 
         pl_inputs = PL_001.Inputs(
             periods=n,
