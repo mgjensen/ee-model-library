@@ -44,15 +44,15 @@ COL_SPACER   = 11  # K — spacer before time series
 COL_PERIOD_0 = 12  # L — first period column
 
 COL_WIDTHS = {
-    1: 1.3, 2: 1.3, 3: 1.3, 4: 1.3,  # A-D spacers
-    5: 40.5,   # E label
-    6: 12.5,   # F constant
-    7: 14.5,   # G unit
-    8: 45.5,   # H notes (hidden)
-    9: 45.5,   # I source (hidden)
-    10: 15.5,  # J total
-    11: 2.5,   # K spacer
-    # L+ set dynamically at 11.5 each
+    1: 1.33, 2: 1.33, 3: 1.33, 4: 1.33,  # A-D spacers (F1F9: 1.33)
+    5: 40.46,   # E label (F1F9: 40.46)
+    6: 12.46,   # F constant (F1F9: 12.46)
+    7: 14.46,   # G unit (F1F9: 14.46)
+    8: 45.46,   # H notes (hidden, outline 1) (F1F9: 45.46)
+    9: 45.46,   # I source (hidden, outline 1)
+    10: 15.46,  # J total (F1F9: 15.46)
+    11: 2.46,   # K spacer (F1F9: 2.46)
+    # L+ set dynamically at 11.46 each
 }
 
 HIDDEN_COLS = {8, 9}  # H and I, outline level 1

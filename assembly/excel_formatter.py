@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from enum import Enum
 
-from openpyxl.styles import PatternFill, Font, Border, Side
+from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
+from openpyxl.formatting.rule import CellIsRule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.page import PageMargins
 
@@ -553,6 +554,27 @@ def _apply_print_setup(ws, style: FormatStyle = None) -> None:
     )
 
 
+def _apply_conditional_formatting(ws, n_periods: int) -> None:
+    """F1F9 conditional formatting: error checks on F2/F3, phase banner on row 3."""
+    # Error check highlight: F2 red fill if not equal 0
+    red_fill = PatternFill("solid", fgColor="FF0000")
+    green_fill = PatternFill("solid", fgColor="99FF66")
+    ws.conditional_formatting.add(
+        'F2', CellIsRule(operator='notEqual', formula=['0'], fill=red_fill)
+    )
+    ws.conditional_formatting.add(
+        'F3', CellIsRule(operator='notEqual', formula=['0'], fill=red_fill)
+    )
+    # Phase banner: row 3 colour coding (L3:last_col_3)
+    last_col = get_column_letter(COL_PERIOD_0 + n_periods - 1)
+    phase_range = f'L3:{last_col}3'
+    # Green fill for "Operations" phase
+    ws.conditional_formatting.add(
+        phase_range,
+        CellIsRule(operator='equal', formula=['"Operations"'], fill=green_fill)
+    )
+
+
 # ============================================================================
 # PUBLIC API
 # ============================================================================
@@ -608,11 +630,15 @@ def apply_formatting(wb, result, style: FormatStyle = None) -> None:
 
     _apply_tab_colors(wb, s)
 
-    # F1F9: gridlines off on all sheets, zoom 80%
+    # F1F9: gridlines off, zoom 80%, conditional formatting, alignment
     if s == FormatStyle.F1F9:
         for ws in wb.worksheets:
             ws.sheet_view.showGridLines = False
             ws.sheet_view.zoomScale = 80
+        # Conditional formatting on calc sheets
+        for sheet_name in CALC_SHEETS:
+            if sheet_name in wb.sheetnames:
+                _apply_conditional_formatting(wb[sheet_name], n)
         _add_style_guide(wb, s)
 
 

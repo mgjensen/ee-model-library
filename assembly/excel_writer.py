@@ -275,7 +275,7 @@ def _apply_column_formatting(ws, n_periods: int) -> None:
     for col_idx, width in COL_WIDTHS.items():
         ws.column_dimensions[get_column_letter(col_idx)].width = width
     for p in range(n_periods):
-        ws.column_dimensions[get_column_letter(COL_PERIOD_0 + p)].width = 11.5
+        ws.column_dimensions[get_column_letter(COL_PERIOD_0 + p)].width = 11.46
     for col_idx in HIDDEN_COLS:
         letter = get_column_letter(col_idx)
         ws.column_dimensions[letter].hidden = True
@@ -730,7 +730,7 @@ def _write_inputs_sheet(
 
     # Set period column widths
     for p in range(n):
-        ws.column_dimensions[get_column_letter(COL_PERIOD_0 + p)].width = 11.5
+        ws.column_dimensions[get_column_letter(COL_PERIOD_0 + p)].width = 11.46
 
     ws.freeze_panes = f"{get_column_letter(COL_PERIOD_0)}4"
     return input_row_map
