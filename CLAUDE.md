@@ -10,7 +10,7 @@ Python library that assembles production-ready Excel financial models for renewa
 
 The codebase is v1.x with per-type modules. A v2.0 generic architecture is planned.
 
-**CURRENT (v1.x):** 12 debt modules, 5 cost modules, 4 revenue modules, 3 tax modules, 9 statement modules, 1 check, 1 reporting, 1 market, 1 core = 39 modules total. Module IDs use `_NNN` suffix (`DEBT_001`, `REV_001`). Files in `modules/debt/DEBT_001.py`, etc.
+**CURRENT (v1.x):** 12 debt modules, 5 cost modules, 4 revenue modules, 4 tax modules, 9 statement modules, 1 check, 1 reporting, 1 market, 1 core = 40 modules total. Module IDs use `_NNN` suffix (`DEBT_001`, `REV_001`). Files in `modules/debt/DEBT_001.py`, etc.
 **TARGET (v2.0):** 1 generic DEBT module, 1 generic OPEX module. Revenue and tax stay separate.
 
 **Rule:** Follow v1.x naming when editing existing code. Use v2.0 patterns only when Martin says "migrate" or "build generic." When in doubt, check imports in `engine.py`.
@@ -63,7 +63,7 @@ ee-model-library/
          CONSTR_FINANCE_001.py SHL_001.py VAT_FACILITY_001.py
          DEBT_REFI_001.py REPOW_DEBT_001.py DSRA_001.py
          CASH_SWEEP_001.py BRIDGE_FACILITY_001.py MRA_001.py
-    tax/TAX_001.py TAX_DE_001.py TAX_LT_001.py
+    tax/TAX_001.py TAX_DE_001.py TAX_LT_001.py TAX_AU_001.py
     statements/PL_001.py CF_001.py BS_001.py IRR_001.py
                WORKING_CAPITAL_001.py SOURCES_USES_001.py
                VALUATION_001.py BREAKEVEN_001.py DIV_001.py
@@ -77,10 +77,12 @@ ee-model-library/
     deal_db.json                  4 calibrated deals
     run_01_holmen_ii.py           Holmen II DK Hybrid (PV+BESS, 3 linear debt facilities)
     run_02_master_model.py        Master Model DK Hybrid (sculpted debt, all 15 gaps closed)
+    run_03_upper_calliope.py      Upper Calliope AU PV+BESS (engine-generated, 5/5 KPIs)
     run_03_skuodas.py             Skuodas LT Wind+Solar (7/7 KPIs, EBITDA cap, SHL limit)
     run_04_viuf.py                Viuf DK PV+BESS (EY-reviewed, external BESS dispatch)
+    run_05_mulwala.py             Mulwala AU BESS (Lancaster Risk, VTA, FCAS)
     holmen_ii_curves.json         Extracted Aurora revenue curves from reference model
-  tests/                          1220 automated tests
+  tests/                          1254 automated tests
   scripts/smoke_test_format.py    Full-model smoke test for Excel output
   docs/
     CLAUDE_MODULES.md             Full module inventory + engine wiring
@@ -212,6 +214,16 @@ def get_excel_formulas(refs: dict) -> dict: ...
 - **Deal DB** (NEW): `calibration/deal_db.py` — `save_to_deal_db()` auto-extracts scalars + KPIs, appends to JSON
 - **Calibration run_03**: Skuodas LT Wind+Solar — 7/7 KPIs pass, 11 gaps resolved
 - **Calibration run_04**: Viuf DK PV+BESS (EY-reviewed) — BESS as external dispatch, SHL multi-tranche
+
+### New modules + features (v0.019)
+- **TAX_AU_001** (NEW): 30% AU corporate tax, straight-line depreciation, full engine wiring (step 10d)
+- **REV_002 v1.1**: VTA compensation (4 deduction layers) + FCAS regulation/contingency revenue
+- **SHL_001 v1.1**: Configurable PIK compounding frequency (1=monthly, 6=semi-annual)
+- **TAX_001 v1.2**: Qualifying assets interest deduction rule (optional, between EBITDA rule and tax charge)
+- **Engine FCFE fix**: Equity IRR uses correct levered FCFE (corrects CF_001 interest double-count)
+- **F1F9 formatting**: Full F1F9 layout standard with FormatStyle enum — Arial, grey borders, conditional formatting, zoom 80%, Style Guide sheet
+- **Calibration run_03_upper_calliope**: AU PV+BESS via engine.py, 5/5 KPIs pass
+- **Calibration run_05_mulwala**: AU BESS with VTA compensation + FCAS, Project IRR 9.97%
 
 ## Common patterns
 
