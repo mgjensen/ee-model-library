@@ -5,21 +5,20 @@ TIER:         detailed
 MARKETS:      ["AU"]
 TECHNOLOGIES: ["PV", "BESS", "WIND", "*"]
 CREATED:      2026-03-30
-MODIFIED:     2026-03-30
+MODIFIED:     2026-04-01
 
 Australian corporate tax calculation for renewable energy projects.
 
 Implements:
   - 30% corporate tax rate (configurable)
-  - Straight-line depreciation per asset bucket (configurable lifetimes)
-  - Loss carry-forward (100% offset, no cap — standard ATO treatment)
-  - All interest fully deductible (no EBITDA cap or thin cap in v1)
-  - Payment timing: prior year tax paid in configurable month (default June)
+  - Declining balance depreciation per asset bucket (configurable rates)
+  - Loss carry-forward: unlimited, no threshold, no partial restriction
+  - All interest fully deductible (no EBITDA cap or thin cap)
+  - PAYG quarterly instalments: Oct, Jan, Apr, Jul = prior FY tax / 4
+  - First year: no PAYG (paid on assessment)
 
-Simplified for Mulwala/Lancaster calibration. Future v2 may add:
-  - Division 43 capital works deductions
-  - Accelerated depreciation for small business entities
-  - Thin capitalisation (Part IVA safe harbour)
+AU FY runs Jul-Jun. Quarterly PAYG instalments fall in months 10, 1, 4, 7
+(Oct, Jan, Apr, Jul of the calendar year).
 
 Source: Income Tax Assessment Act 1997 (ITAA 1997)
 """
@@ -42,72 +41,62 @@ class Inputs(BaseModel):
     start_year: int = Field(..., description="Calendar year of period 0")
     start_month: int = Field(..., ge=1, le=12, description="Calendar month (1-12) of period 0")
 
-    tax_rate: float = Field(0.30, description="Australian corporate tax rate")
-    loss_cf_active: bool = Field(True, description="Enable loss carry-forward")
-
-    # Monthly time series (wired by engine)
+    # Time-series (wired by engine)
     ebitda: list[float] = Field(..., description="Monthly EBITDA (currency-k)")
-    interest_expense: list[float] = Field(..., description="Monthly interest expense (currency-k)")
+    total_interest: list[float] = Field(..., description="Monthly interest expense (currency-k)")
 
-    # Depreciation buckets — straight-line
+    # Depreciation buckets — declining balance
     capex_by_bucket: list[list[float]] = Field(
-        ..., description="Per-bucket capex additions (4 or 7 lists, each length=periods)"
+        ..., description="Per-bucket capex additions (up to 7 lists, each length=periods)"
     )
     opening_balances: list[float] = Field(
         default_factory=lambda: [0.0] * N_BUCKETS,
         description="Opening tax basis per bucket (currency-k)"
     )
-    depreciation_lifetimes: list[int] = Field(
-        default_factory=lambda: [30, 30, 30, 30, 30, 30, 10],
-        description="Useful life per bucket in years"
+    depreciation_rates: list[float] = Field(
+        default_factory=lambda: [0.25] * N_BUCKETS,
+        description="Declining balance rate per bucket"
     )
 
-    tax_payment_month: int = Field(
-        6, ge=1, le=12,
-        description="Month (1-12) when prior year tax is paid"
-    )
+    tax_rate: float = Field(0.30, description="Australian corporate tax rate")
+    loss_cfwd_active: bool = Field(True, description="Enable loss carry-forward")
 
     @model_validator(mode="after")
     def _validate(self):
         n = self.periods
-        if len(self.ebitda) != n:
-            raise ValueError(f"ebitda length {len(self.ebitda)} != periods {n}")
-        if len(self.interest_expense) != n:
-            raise ValueError(f"interest_expense length {len(self.interest_expense)} != periods {n}")
+        for name, arr in [("ebitda", self.ebitda), ("total_interest", self.total_interest)]:
+            if len(arr) != n:
+                raise ValueError(f"{name} length {len(arr)} != periods {n}")
         nb = len(self.capex_by_bucket)
-        if nb not in (4, N_BUCKETS):
-            raise ValueError(f"capex_by_bucket must have 4 or {N_BUCKETS} lists, got {nb}")
+        if nb > N_BUCKETS:
+            raise ValueError(f"capex_by_bucket must have <= {N_BUCKETS} lists, got {nb}")
         for i, b in enumerate(self.capex_by_bucket):
             if len(b) != n:
                 raise ValueError(f"capex_by_bucket[{i}] length {len(b)} != periods {n}")
-        if nb == 4:
+        if nb < N_BUCKETS:
             self.capex_by_bucket = list(self.capex_by_bucket) + [
-                [0.0] * n for _ in range(N_BUCKETS - 4)
+                [0.0] * n for _ in range(N_BUCKETS - nb)
             ]
         nob = len(self.opening_balances)
-        if nob not in (4, N_BUCKETS):
-            raise ValueError(f"opening_balances must have 4 or {N_BUCKETS} values, got {nob}")
-        if nob == 4:
-            self.opening_balances = list(self.opening_balances) + [0.0] * (N_BUCKETS - 4)
-        ndl = len(self.depreciation_lifetimes)
-        if ndl not in (4, N_BUCKETS):
-            raise ValueError(f"depreciation_lifetimes must have 4 or {N_BUCKETS} values, got {ndl}")
-        if ndl == 4:
-            self.depreciation_lifetimes = list(self.depreciation_lifetimes) + [
-                self.depreciation_lifetimes[-1]
-            ] * (N_BUCKETS - 4)
+        if nob < N_BUCKETS:
+            self.opening_balances = list(self.opening_balances) + [0.0] * (N_BUCKETS - nob)
+        ndr = len(self.depreciation_rates)
+        if ndr < N_BUCKETS:
+            self.depreciation_rates = list(self.depreciation_rates) + [
+                self.depreciation_rates[-1]
+            ] * (N_BUCKETS - ndr)
         return self
 
 
 class Outputs(BaseModel):
-    tax_depreciation: list[float]
-    deductible_interest: list[float]
-    non_deductible_interest: list[float]
-    taxable_income: list[float]
-    loss_carried_forward: list[float]
-    tax_charge_accrued: list[float]
-    tax_paid: list[float]
-    total_tax_paid: float
+    tax_depreciation: list[float]          # monthly total depreciation
+    corporate_tax_charge: list[float]      # monthly accrual
+    tax_paid: list[float]                  # quarterly PAYG
+    annual_taxable_income: list[float]
+    annual_tax_charge: list[float]
+    annual_loss_pool: list[float]
+    effective_tax_rate: float
+    total_lifetime_tax: float
 
 
 # ============================================================================
@@ -123,125 +112,93 @@ def _year_groups(periods: int, start_year: int, start_month: int) -> OrderedDict
     return groups
 
 
-def _spread_annual_to_monthly(
-    annual_values: list[float],
-    year_groups: OrderedDict,
-    periods: int,
-) -> list[float]:
-    monthly = [0.0] * periods
-    for i, year_periods in enumerate(year_groups.values()):
-        if i >= len(annual_values):
+def _spread_annual(annual: list[float], yg: OrderedDict, n: int) -> list[float]:
+    monthly = [0.0] * n
+    for i, yp in enumerate(yg.values()):
+        if i >= len(annual):
             break
-        if year_periods:
-            amt = annual_values[i] / len(year_periods)
-            for p in year_periods:
+        if yp:
+            amt = annual[i] / len(yp)
+            for p in yp:
                 monthly[p] = amt
     return monthly
 
 
-# ============================================================================
-# CORE CALCULATIONS
-# ============================================================================
-
-def _calculate_straight_line_depreciation(
-    opening_balances: list[float],
+def _calc_depreciation(
+    opening: list[float],
     capex_by_bucket: list[list[float]],
-    lifetimes: list[int],
-    year_groups: OrderedDict,
-    periods: int,
+    rates: list[float],
+    yg: OrderedDict,
+    n: int,
 ) -> tuple[list[float], list[float]]:
-    nb = len(opening_balances)
-    balances = list(opening_balances)
-    annual_dep = []
-
-    for year_periods in year_groups.values():
-        year_capex = [
-            sum(capex_by_bucket[b][p] for p in year_periods)
-            for b in range(nb)
-        ]
-        year_total = 0.0
+    """Declining balance depreciation per bucket. Returns (annual, monthly)."""
+    nb = len(opening)
+    balances = list(opening)
+    annual = []
+    for yp in yg.values():
+        year_capex = [sum(capex_by_bucket[b][p] for p in yp) for b in range(nb)]
+        basis = [balances[b] + year_capex[b] for b in range(nb)]
+        total = sum(basis[b] * rates[b] for b in range(nb))
         for b in range(nb):
-            basis = balances[b] + year_capex[b]
-            lifetime = lifetimes[b]
-            dep = basis / lifetime if lifetime > 0 else 0.0
-            dep = min(dep, basis)
-            year_total += dep
-            balances[b] = max(0.0, basis - dep)
-        annual_dep.append(year_total)
-
-    monthly_dep = _spread_annual_to_monthly(annual_dep, year_groups, periods)
-    return annual_dep, monthly_dep
-
-
-def _calculate_tax_with_loss_cf(
-    annual_ebitda: list[float],
-    annual_depreciation: list[float],
-    annual_interest: list[float],
-    tax_rate: float,
-    loss_cf_active: bool,
-) -> tuple[list[float], list[float], list[float]]:
-    taxable = []
-    charge = []
-    loss_pool_arr = []
-    loss_pool = 0.0
-
-    for y in range(len(annual_ebitda)):
-        gross = annual_ebitda[y] - annual_depreciation[y] - annual_interest[y]
-
-        if gross <= 0:
-            if loss_cf_active:
-                loss_pool += -gross
-            taxable.append(gross)
-            charge.append(0.0)
-        else:
-            if loss_cf_active:
-                relief = min(loss_pool, gross)
-                net = gross - relief
-                loss_pool = max(0.0, loss_pool - relief)
-            else:
-                net = gross
-            taxable.append(net)
-            charge.append(max(0.0, net) * tax_rate)
-
-        loss_pool_arr.append(loss_pool)
-
-    return taxable, charge, loss_pool_arr
+            balances[b] = max(0.0, basis[b] * (1.0 - rates[b]))
+        annual.append(total)
+    monthly = _spread_annual(annual, yg, n)
+    return annual, monthly
 
 
 # ============================================================================
-# MAIN CALCULATE
+# CORE CALCULATION
 # ============================================================================
 
 def calculate(inputs: Inputs) -> Outputs:
     n = inputs.periods
     yg = _year_groups(n, inputs.start_year, inputs.start_month)
 
-    annual_ebitda = [
-        sum(inputs.ebitda[p] for p in plist) for plist in yg.values()
-    ]
-    annual_interest = [
-        sum(inputs.interest_expense[p] for p in plist) for plist in yg.values()
-    ]
+    # Annual aggregations
+    annual_ebitda = [sum(inputs.ebitda[p] for p in yp) for yp in yg.values()]
+    annual_interest = [sum(inputs.total_interest[p] for p in yp) for yp in yg.values()]
 
-    # Step 1 — Straight-line depreciation
-    annual_dep, monthly_dep = _calculate_straight_line_depreciation(
-        inputs.opening_balances,
-        inputs.capex_by_bucket,
-        inputs.depreciation_lifetimes,
-        yg, n,
+    # Step 1: Declining balance depreciation
+    annual_dep, monthly_dep = _calc_depreciation(
+        inputs.opening_balances, inputs.capex_by_bucket,
+        inputs.depreciation_rates, yg, n,
     )
 
-    # Step 2 — All interest is deductible (no cap in AU v1)
-    annual_ded_int = list(annual_interest)
+    # Step 2: Taxable income = EBITDA - depreciation - interest (fully deductible)
+    ny = len(annual_ebitda)
+    annual_taxable = []
+    annual_charge = []
+    annual_loss = []
+    loss_pool = 0.0
 
-    # Step 3 — Tax charge with loss carry-forward
-    annual_taxable, annual_charge, annual_loss_pool = _calculate_tax_with_loss_cf(
-        annual_ebitda, annual_dep, annual_ded_int,
-        inputs.tax_rate, inputs.loss_cf_active,
-    )
+    for y in range(ny):
+        gross = annual_ebitda[y] - annual_dep[y] - annual_interest[y]
+        if gross <= 0:
+            if inputs.loss_cfwd_active:
+                loss_pool += -gross
+            annual_taxable.append(gross)
+            annual_charge.append(0.0)
+        else:
+            if inputs.loss_cfwd_active and loss_pool > 0:
+                relief = min(loss_pool, gross)
+                net = gross - relief
+                loss_pool = max(0.0, loss_pool - relief)
+            else:
+                net = gross
+            annual_taxable.append(net)
+            annual_charge.append(max(0.0, net) * inputs.tax_rate)
+        annual_loss.append(loss_pool)
 
-    # Step 4 — Payment timing
+    # Step 3: Monthly accrual spread
+    monthly_charge = _spread_annual(annual_charge, yg, n)
+
+    # Step 4: PAYG quarterly timing
+    # AU FY = Jul-Jun. PAYG instalments in months 10 (Oct), 1 (Jan), 4 (Apr), 7 (Jul)
+    # = prior FY tax / 4. First year: no PAYG.
     tax_paid = [0.0] * n
+    payg_months = [10, 1, 4, 7]
+
+    # Build calendar lookup: (year, month) -> period index
     cal_to_period: dict = {}
     for p in range(n):
         offset = inputs.start_month - 1 + p
@@ -249,28 +206,39 @@ def calculate(inputs: Inputs) -> Outputs:
         m = (offset % 12) + 1
         cal_to_period[(y, m)] = p
 
-    for i, year in enumerate(yg.keys()):
-        charge_y = annual_charge[i]
-        pay_period = cal_to_period.get((year + 1, inputs.tax_payment_month))
-        if pay_period is not None:
-            tax_paid[pay_period] += charge_y
+    # Map year_groups index to AU FY
+    # AU FY ending June Y covers Jul(Y-1) to Jun(Y)
+    # Calendar year Y in year_groups roughly maps to FY ending Jun(Y+1) for Jan-Jun
+    # and FY ending Jun(Y+1) for Jul-Dec
+    # Simplification: PAYG for year-index y is paid in the following calendar year
+    years = list(yg.keys())
+    for y_idx in range(ny):
+        if y_idx == 0:
+            continue  # First year: no PAYG (paid on assessment)
+        charge = annual_charge[y_idx]
+        if charge <= 0:
+            continue
+        quarterly = charge / 4.0
+        pay_year = years[y_idx] + 1
+        for m in payg_months:
+            pay_p = cal_to_period.get((pay_year, m))
+            if pay_p is not None:
+                tax_paid[pay_p] += quarterly
 
-    # Monthly spreads
-    monthly_ded_int = _spread_annual_to_monthly(annual_ded_int, yg, n)
-    monthly_non_ded = [0.0] * n
-    monthly_taxable = _spread_annual_to_monthly(annual_taxable, yg, n)
-    monthly_charge = _spread_annual_to_monthly(annual_charge, yg, n)
-    monthly_loss_pool = _spread_annual_to_monthly(annual_loss_pool, yg, n)
+    # Effective rate
+    total_ebt = sum(annual_ebitda[y] - annual_dep[y] - annual_interest[y] for y in range(ny))
+    total_tax = sum(annual_charge)
+    eff_rate = total_tax / total_ebt if abs(total_ebt) > 1e-9 else 0.0
 
     return Outputs(
         tax_depreciation=monthly_dep,
-        deductible_interest=monthly_ded_int,
-        non_deductible_interest=monthly_non_ded,
-        taxable_income=monthly_taxable,
-        loss_carried_forward=monthly_loss_pool,
-        tax_charge_accrued=monthly_charge,
+        corporate_tax_charge=monthly_charge,
         tax_paid=tax_paid,
-        total_tax_paid=sum(tax_paid),
+        annual_taxable_income=annual_taxable,
+        annual_tax_charge=annual_charge,
+        annual_loss_pool=annual_loss,
+        effective_tax_rate=eff_rate,
+        total_lifetime_tax=total_tax,
     )
 
 
@@ -281,8 +249,9 @@ def calculate(inputs: Inputs) -> Outputs:
 def get_excel_formulas(refs: dict) -> dict:
     r = refs
     return {
-        "straight_line_dep": f"=({r['opening_bal']}+{r['capex']})/{r['lifetime']}",
-        "closing_balance": f"={r['opening_bal']}+{r['capex']}-({r['opening_bal']}+{r['capex']})/{r['lifetime']}",
-        "taxable_income_gross": f"={r['ebitda']}-{r['annual_dep']}-{r['interest']}",
+        "depreciation": f"={r['basis']}*{r['dep_rate']}",
+        "closing_balance": f"={r['basis']}*(1-{r['dep_rate']})",
+        "taxable_income": f"={r['ebitda']}-{r['annual_dep']}-{r['interest']}",
         "tax_charge": f"=MAX(0,{r['taxable_income']})*{r['tax_rate']}",
+        "payg_quarterly": f"={r['prior_year_tax']}/4",
     }
