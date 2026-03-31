@@ -159,6 +159,25 @@ def test_margin_at_period_during_construction():
     assert _margin_at_period(5, 12, [0.023, 0.020], [0, 10]) == pytest.approx(0.023)
 
 
+def test_margin_at_period_three_steps():
+    """3-step margin: 2.3% yr 0-5, 2.0% yr 5-10, 1.5% yr 10+."""
+    rates = [0.023, 0.020, 0.015]
+    steps = [0, 5, 10]
+    cod = 12
+    # Year 0 (period 12): first margin
+    assert _margin_at_period(cod, cod, rates, steps) == pytest.approx(0.023)
+    # Year 4.9 (period 12 + 58): still first margin
+    assert _margin_at_period(cod + 58, cod, rates, steps) == pytest.approx(0.023)
+    # Year 5 exactly (period 12 + 60): second margin
+    assert _margin_at_period(cod + 60, cod, rates, steps) == pytest.approx(0.020)
+    # Year 7 (period 12 + 84): still second margin
+    assert _margin_at_period(cod + 84, cod, rates, steps) == pytest.approx(0.020)
+    # Year 10 exactly (period 12 + 120): third margin
+    assert _margin_at_period(cod + 120, cod, rates, steps) == pytest.approx(0.015)
+    # Year 14 (period 12 + 168): still third margin
+    assert _margin_at_period(cod + 168, cod, rates, steps) == pytest.approx(0.015)
+
+
 def test_blended_dscr_single_stream():
     streams = [DSCRStream(name="pv", target_dscr=1.30, cfads=[100.0] * 6)]
     assert _blended_dscr_for_sa(streams, [0, 1, 2, 3, 4, 5]) == pytest.approx(1.30)
@@ -569,6 +588,83 @@ class TestLLCR:
         if len(llcr_vals) >= 2:
             # Flat CFADS should produce smoothly decreasing LLCR
             assert llcr_vals[0] >= llcr_vals[-1]
+
+    def test_llcr_declining_cfads(self):
+        """Declining CFADS reduces borrowing capacity vs flat."""
+        n = 192
+        construction = 12
+        ops = n - construction
+        declining = [600.0 * (1.0 - 0.5 * i / ops) for i in range(ops)]
+        flat_cfads = [600.0] * ops
+        zeros = [0.0] * construction
+
+        common = dict(
+            periods=n, start_year=2025, start_month=1,
+            tenor_months=180, payment_months=[6, 12],
+            swap_rate=0.03, hedge_pct=0.75, reference_rate=0.03,
+            margin_rates=[0.020], margin_step_years=[0],
+            leverage_cap_pct=0.80, total_capex_DKKk=200_000.0,
+            construction_end_period=construction,
+        )
+        out_declining = calculate(Inputs(
+            dscr_streams=[DSCRStream(name="pv", target_dscr=1.20,
+                                     cfads=zeros + declining)],
+            **common,
+        ))
+        out_flat = calculate(Inputs(
+            dscr_streams=[DSCRStream(name="pv", target_dscr=1.20,
+                                     cfads=zeros + flat_cfads)],
+            **common,
+        ))
+        # Declining CFADS → less borrowing capacity
+        assert out_declining.total_debt < out_flat.total_debt
+        # Both should still have valid LLCR > 1
+        assert out_declining.llcr > 1.0
+        assert out_flat.llcr > 1.0
+
+    def test_llcr_single_period_remaining(self):
+        """LLCR with very short remaining tenor — near-maturity edge case."""
+        # Use short model: 18 months total (6 construction + 12 repayment)
+        n = 18
+        construction = 6
+        cfads = [0.0] * construction + [500.0] * (n - construction)
+        out = calculate(Inputs(
+            periods=n, start_year=2025, start_month=1,
+            dscr_streams=[DSCRStream(name="pv", target_dscr=1.20, cfads=cfads)],
+            tenor_months=12, payment_months=[6, 12],
+            swap_rate=0.03, hedge_pct=0.75, reference_rate=0.03,
+            margin_rates=[0.020], margin_step_years=[0],
+            leverage_cap_pct=0.80, total_capex_DKKk=50_000.0,
+            construction_end_period=construction,
+        ))
+        llcr_vals = [v for v in out.llcr_series if not math.isnan(v)]
+        # Should have at least some valid values
+        assert len(llcr_vals) > 0
+        # Last valid LLCR should be smallest (least remaining CFADS)
+        assert llcr_vals[-1] <= llcr_vals[0]
+
+    def test_llcr_high_discount_rate(self):
+        """High discount rate reduces borrowing capacity vs low rate."""
+        common = dict(
+            periods=192, start_year=2025, start_month=1,
+            dscr_streams=[DSCRStream(name="pv", target_dscr=1.20,
+                                     cfads=[0.0]*12 + [500.0]*180)],
+            tenor_months=180, payment_months=[6, 12],
+            hedge_pct=0.75, reference_rate=0.03,
+            leverage_cap_pct=0.80, total_capex_DKKk=200_000.0,
+            construction_end_period=12,
+        )
+        out_high = calculate(Inputs(
+            **common, swap_rate=0.08, margin_rates=[0.04], margin_step_years=[0],
+        ))
+        out_low = calculate(Inputs(
+            **common, swap_rate=0.02, margin_rates=[0.01], margin_step_years=[0],
+        ))
+        # Higher rate → more interest → less room for principal → smaller facility
+        assert out_high.total_debt < out_low.total_debt
+        # Both should still have valid LLCR
+        assert out_high.llcr > 1.0
+        assert out_low.llcr > 1.0
 
 
 # ---------------------------------------------------------------------------

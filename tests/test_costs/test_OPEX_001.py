@@ -419,6 +419,45 @@ def test_om_config_multi_period_stepped_cost():
     assert out.om[60] > out.om[59]
 
 
+def test_om_config_five_plus_periods():
+    """5 sequential O&M contract periods with distinct costs."""
+    from modules.costs.OPEX_001 import ContractPeriod, OMConfig
+    om_cfg = OMConfig(
+        periods=[
+            ContractPeriod(cost_DKKk_per_unit_annual=80.0, duration_years=3),
+            ContractPeriod(cost_DKKk_per_unit_annual=100.0, duration_years=3),
+            ContractPeriod(cost_DKKk_per_unit_annual=120.0, duration_years=3),
+            ContractPeriod(cost_DKKk_per_unit_annual=140.0, duration_years=3),
+            ContractPeriod(cost_DKKk_per_unit_annual=160.0, duration_years=3),
+        ],
+        unit_count=5.0,
+    )
+    out = calculate(_base_inputs(
+        periods=180,  # 15 years = covers all 5 periods
+        start_year=2025,
+        start_month=1,
+        om_annual=0.0,
+        inflation_rate=0.0,
+        om_config=om_cfg,
+    ))
+    # Period 1 (yr 1-3): 80 * 5 / 12 = 33.333
+    assert out.om[0] == pytest.approx(80.0 * 5.0 / 12.0, rel=1e-4)
+    assert out.om[35] == pytest.approx(80.0 * 5.0 / 12.0, rel=1e-4)
+    # Period 2 (yr 4-6): 100 * 5 / 12 = 41.667
+    assert out.om[36] == pytest.approx(100.0 * 5.0 / 12.0, rel=1e-4)
+    # Period 3 (yr 7-9): 120 * 5 / 12 = 50.0
+    assert out.om[72] == pytest.approx(120.0 * 5.0 / 12.0, rel=1e-4)
+    # Period 4 (yr 10-12): 140 * 5 / 12 = 58.333
+    assert out.om[108] == pytest.approx(140.0 * 5.0 / 12.0, rel=1e-4)
+    # Period 5 (yr 13-15): 160 * 5 / 12 = 66.667
+    assert out.om[144] == pytest.approx(160.0 * 5.0 / 12.0, rel=1e-4)
+    # Each step is higher than previous
+    assert out.om[36] > out.om[35]
+    assert out.om[72] > out.om[71]
+    assert out.om[108] > out.om[107]
+    assert out.om[144] > out.om[143]
+
+
 def test_om_config_minimum_floor_binding():
     """Minimum cost floor is binding when rate < floor."""
     from modules.costs.OPEX_001 import ContractPeriod, OMConfig
@@ -457,3 +496,88 @@ def test_om_config_empty_falls_back():
     ))
     # Should use the ComponentRate om=12000 → 1000/month
     assert all(v == pytest.approx(1_000.0) for v in out.om)
+
+
+# ---------------------------------------------------------------------------
+# GAP: Land lease multi-period tests
+# ---------------------------------------------------------------------------
+
+def test_land_lease_four_plus_periods():
+    """4 sequential land lease periods with distinct costs."""
+    from modules.costs.OPEX_001 import ContractPeriod, LandLeaseConfig
+    ll_cfg = LandLeaseConfig(
+        periods=[
+            ContractPeriod(cost_DKKk_per_unit_annual=200.0, duration_years=5),
+            ContractPeriod(cost_DKKk_per_unit_annual=250.0, duration_years=5),
+            ContractPeriod(cost_DKKk_per_unit_annual=300.0, duration_years=5),
+            ContractPeriod(cost_DKKk_per_unit_annual=350.0, duration_years=5),
+        ],
+        escalation_rate=0.0,
+    )
+    out = calculate(_base_inputs(
+        periods=240,  # 20 years
+        start_year=2025,
+        start_month=1,
+        om_annual=0.0,
+        inflation_rate=0.0,
+        land_lease_rented_config=ll_cfg,
+    ))
+    # Period 1 (yr 1-5): 200 / 12
+    assert out.land_lease_rented[0] == pytest.approx(200.0 / 12.0, rel=1e-4)
+    assert out.land_lease_rented[59] == pytest.approx(200.0 / 12.0, rel=1e-4)
+    # Period 2 (yr 6-10): 250 / 12
+    assert out.land_lease_rented[60] == pytest.approx(250.0 / 12.0, rel=1e-4)
+    # Period 3 (yr 11-15): 300 / 12
+    assert out.land_lease_rented[120] == pytest.approx(300.0 / 12.0, rel=1e-4)
+    # Period 4 (yr 16-20): 350 / 12
+    assert out.land_lease_rented[180] == pytest.approx(350.0 / 12.0, rel=1e-4)
+    # Step increases
+    assert out.land_lease_rented[60] > out.land_lease_rented[59]
+    assert out.land_lease_rented[120] > out.land_lease_rented[119]
+    assert out.land_lease_rented[180] > out.land_lease_rented[179]
+
+
+def test_land_lease_separate_inflation_from_om():
+    """Lease escalation_rate is independent of O&M inflation_rate."""
+    from modules.costs.OPEX_001 import ContractPeriod, LandLeaseConfig
+    ll_cfg = LandLeaseConfig(
+        periods=[
+            ContractPeriod(cost_DKKk_per_unit_annual=120.0, duration_years=10),
+        ],
+        escalation_rate=0.05,  # 5% lease escalation
+    )
+    out = calculate(_base_inputs(
+        periods=120,  # 10 years
+        start_year=2025,
+        start_month=1,
+        om_annual=12_000.0,
+        inflation_rate=0.02,  # 2% O&M inflation
+        land_lease_rented_config=ll_cfg,
+    ))
+    # After 1 year (period 12), lease should escalate at 5%
+    lease_yr1 = out.land_lease_rented[0]
+    lease_yr2 = out.land_lease_rented[12]
+    lease_growth = lease_yr2 / lease_yr1
+    # After 1 year, O&M should escalate at 2%
+    om_yr1 = out.om[0]
+    om_yr2 = out.om[12]
+    om_growth = om_yr2 / om_yr1
+    # Lease grows faster (5%) than O&M (2%)
+    assert lease_growth > om_growth
+    assert lease_growth == pytest.approx(1.05, rel=0.01)
+    assert om_growth == pytest.approx(1.02, rel=0.01)
+
+
+def test_land_lease_config_empty_falls_back():
+    """Empty LandLeaseConfig falls back to ComponentRate."""
+    from modules.costs.OPEX_001 import LandLeaseConfig
+    ll_cfg = LandLeaseConfig(periods=[], escalation_rate=0.03)
+    out = calculate(_base_inputs(
+        periods=24,
+        om_annual=0.0,
+        inflation_rate=0.0,
+        land_lease_rented=_cr(annual=6_000.0),
+        land_lease_rented_config=ll_cfg,
+    ))
+    # Should fall back to ComponentRate: 6000 / 12 = 500/month
+    assert all(v == pytest.approx(500.0) for v in out.land_lease_rented)
