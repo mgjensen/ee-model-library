@@ -366,9 +366,10 @@ def _run_per_tech(entity: TechEntity, tl: TimelineConfig, out: dict, result: Ass
         # Determine tax module from market
         # For now: try all in fallback order
         tax_inp = entity.tax_config
+        _int_key = "total_interest" if hasattr(tax_inp, "total_interest") else "interest_expense"
         tax_inp = tax_inp.model_copy(update={
             "ebitda": ebitda_tech,
-            "interest_expense": _zeros(n),  # per-tech: unlevered (no debt allocation)
+            _int_key: _zeros(n),  # per-tech: unlevered (no debt allocation)
         })
         if hasattr(tax_inp, 'capex_by_bucket'):
             if not tax_inp.capex_by_bucket or all(all(v == 0 for v in b) for b in tax_inp.capex_by_bucket):
@@ -392,7 +393,10 @@ def _run_per_tech(entity: TechEntity, tl: TimelineConfig, out: dict, result: Ass
     dep = tax_out_tech.tax_depreciation if tax_out_tech else _zeros(n)
     if repow_out:
         dep = [dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
-    tax_charge = tax_out_tech.tax_charge_accrued if tax_out_tech else _zeros(n)
+    if tax_out_tech:
+        tax_charge = getattr(tax_out_tech, "tax_charge_accrued", None) or getattr(tax_out_tech, "corporate_tax_charge", _zeros(n))
+    else:
+        tax_charge = _zeros(n)
 
     # --- Per-tech PL_001 ---
     pl_inputs = PL_001.Inputs(
