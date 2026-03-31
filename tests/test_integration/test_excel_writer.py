@@ -158,11 +158,11 @@ def test_header_row5_total(written_wb):
     assert ws.cell(row=5, column=COL_TOTAL).value == "Total / avg."
 
 
-def test_freeze_panes_l7(written_wb):
+def test_freeze_panes_l5(written_wb):
     wb, *_ = written_wb
     for sheet_name in ["Revenue", "Costs", "Debt", "FS_Monthly"]:
         ws = wb[sheet_name]
-        assert str(ws.freeze_panes) == "L7", f"{sheet_name} freeze panes wrong"
+        assert str(ws.freeze_panes) == "L5", f"{sheet_name} freeze panes wrong"
 
 
 def test_hidden_columns(written_wb):

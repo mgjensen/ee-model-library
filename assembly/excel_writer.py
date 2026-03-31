@@ -104,7 +104,7 @@ _INT_FIELDS   = {"payback_period_months"}
 _MWH_FIELDS   = {"net_production_MWh", "discharge_volume", "goo_volume",
                  "goo_lost_volume", "total_ppa_contracted_volume"}
 
-_BOLD_FONT    = Font(bold=True)
+_BOLD_FONT    = Font(name='Arial', bold=True, size=10)
 
 
 # ============================================================================
@@ -464,7 +464,7 @@ def _write_fs_annual(ws, result: AssemblyResult, config: ProjectConfig) -> None:
                     value=_safe(tot)).number_format = _num_format(field)
 
     _apply_column_formatting(ws, n_years)
-    ws.freeze_panes = "L7"
+    ws.freeze_panes = "L5"
 
 
 def _write_summary(ws, result: AssemblyResult) -> None:
@@ -566,7 +566,7 @@ _CONFIG_FIELD_TO_MODULE: dict[str, str] = {
 # Timeline fields injected by engine — skip on Assumptions sheet
 _TIMELINE_FIELDS = {"periods", "start_year", "start_month"}
 
-_INPUT_FILL = PatternFill("solid", fgColor="FFF2CC")  # pale yellow
+_INPUT_FILL = PatternFill("solid", fgColor="F8F8F8")  # F1F9: near-white input bg
 
 
 def _sanitize_name(name: str) -> str:
@@ -1002,7 +1002,7 @@ def write_workbook(
             _write_wacc_scalars(ws, result)
         _write_subsection_labels(ws, sheet_name)
         _apply_column_formatting(ws, n)
-        ws.freeze_panes = "L7"
+        ws.freeze_panes = "L5"
 
     _write_fs_annual(wb["FS_Annual"], result, config)
     _write_subsection_labels(wb["FS_Annual"], "FS_Annual")

@@ -160,9 +160,17 @@ FIELD_FORMATS: dict[str, str] = {
 }
 
 
-def _get_field_format(field_name: str) -> str:
-    """Return number format string for a field. Defaults to FMT_DKKK."""
-    return FIELD_FORMATS.get(field_name, FMT_DKKK)
+def _get_field_format(field_name: str, style: FormatStyle = None) -> str:
+    """Return number format string for a field."""
+    s = style or DEFAULT_STYLE
+    base = FIELD_FORMATS.get(field_name)
+    if base:
+        # For F1F9: upgrade percentage format to 2dp
+        if s == FormatStyle.F1F9 and base == FMT_PCT:
+            return FMT_PCT_F1F9
+        return base
+    # Default: kEUR format depends on style
+    return FMT_DKKK_F1F9 if s == FormatStyle.F1F9 else FMT_DKKK
 
 
 # ============================================================================
@@ -309,10 +317,23 @@ def _format_header_rows(ws, n_cols: int, style: FormatStyle = None) -> None:
         for c in range(COL_PERIOD_0, last_col + 1):
             ws.cell(row=3, column=c).fill = _fill(FILL_PHASE_STRIPE)
     else:
-        # F1F9: row 1 title (14pt), rows 2-4 bold headers, no fills
-        ws.cell(row=1, column=COL_LABEL).font = _font(bold=False, size=14, style=s)
+        # F1F9: set Arial on ALL header cells (rows 1-5)
+        default_font = _font(style=s)
+        bold_font = _font(bold=True, style=s)
+        title_font = _font(size=14, style=s)
+        for r in range(1, 6):
+            for c in range(1, last_col + 1):
+                cell = ws.cell(row=r, column=c)
+                if r == 1:
+                    cell.font = title_font
+                elif cell.value is not None:
+                    cell.font = default_font
+                else:
+                    cell.font = default_font
+        # Bold on label column
+        ws.cell(row=1, column=COL_LABEL).font = title_font
         for r in (2, 3, 4):
-            ws.cell(row=r, column=COL_LABEL).font = _font(bold=True, style=s)
+            ws.cell(row=r, column=COL_LABEL).font = bold_font
         # Phase stripe: near-white fill
         for c in range(COL_PERIOD_0, last_col + 1):
             ws.cell(row=3, column=c).fill = _fill(FILL_PHASE_STRIPE)
@@ -443,7 +464,7 @@ def _apply_number_formats(ws, sheet_name: str, n_cols: int, style: FormatStyle =
     for (sht, mod, field), row_num in ROW_MAP.items():
         if sht != logical:
             continue
-        fmt = _get_field_format(field)
+        fmt = _get_field_format(field, s)
         ws.cell(row=row_num, column=COL_TOTAL).number_format = fmt
         for p in range(n_cols):
             ws.cell(row=row_num, column=COL_PERIOD_0 + p).number_format = fmt
