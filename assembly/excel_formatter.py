@@ -319,16 +319,17 @@ def _format_header_rows(ws, n_cols: int, style: FormatStyle = None) -> None:
 
 
 def _format_data_rows(ws, sheet_name: str, n_cols: int, style: FormatStyle = None) -> None:
-    """Apply font colors, borders, and col J fill to all data rows."""
+    """Apply font colors, borders, alignment and col J fill to all data rows."""
     s = style or DEFAULT_STYLE
     last_data_col = COL_PERIOD_0 + n_cols - 1
     rows = _get_sheet_rows(sheet_name)
+    align_top = Alignment(vertical='top')
 
     for row_num, mod_id, field in rows:
-        # Col J: total column fill
+        # Col J: total column grey fill
         ws.cell(row=row_num, column=COL_TOTAL).fill = _fill(FILL_TOTAL_COL)
 
-        # Font color: F1F9 uses red for cross-sheet, blue for inputs
+        # Font color
         if field in EXPORT_FIELDS:
             font_color = FONT_EXPORT
         elif field in IMPORT_FIELDS:
@@ -340,12 +341,21 @@ def _format_data_rows(ws, sheet_name: str, n_cols: int, style: FormatStyle = Non
             cell = ws.cell(row=row_num, column=c)
             existing_bold = cell.font.bold if cell.font else False
             cell.font = _font(font_color, bold=existing_bold, style=s)
+            # F1F9: vertical top alignment on all cells
+            if s == FormatStyle.F1F9:
+                cell.alignment = align_top
 
-        # Borders differ by style
+        # Borders
         if s == FormatStyle.F1F9:
+            # F1F9: ALL data rows get thin grey top border
+            grey_top = _border_f1f9_row_top()
+            for c in range(COL_LABEL, last_data_col + 1):
+                ws.cell(row=row_num, column=c).border = grey_top
+            # Subtotals: thin black bottom (overrides grey top)
             if field in SUBTOTAL_FIELDS:
                 for c in range(COL_LABEL, last_data_col + 1):
                     ws.cell(row=row_num, column=c).border = _border_f1f9_subtotal()
+            # Totals: medium black bottom
             elif field in TOTAL_FIELDS:
                 for c in range(COL_LABEL, last_data_col + 1):
                     ws.cell(row=row_num, column=c).border = _border_f1f9_total()
