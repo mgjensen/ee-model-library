@@ -7,7 +7,31 @@
       "Bash(git reset:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(py -m pytest tests/test_debt/test_DEBT_001.py -v --tb=short)"
+      "Bash(py -m pytest tests/test_debt/test_DEBT_001.py -v --tb=short)",
+      "Bash(py -m pytest tests/test_costs/test_OPEX_002.py -q)",
+      "Bash(py -m pytest tests/test_debt/test_DEBT_SCULPT_001.py -v --tb=short)",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(py -m pytest tests/ -q)",
+      "Bash(where python:*)",
+      "Bash(\"C:\\\\Users\\\\mgj\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python314\\\\python.exe\" -m pytest tests/ -q)",
+      "Bash(git ls-tree:*)",
+      "Bash(gh api:*)",
+      "Bash(\"C:\\\\Users\\\\mgj\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python314\\\\python.exe\" -m pytest tests/test_costs/ tests/test_capex/ -q)",
+      "Bash(ls c:/Users/mgj/ee-model-library/tests/test_statements/test_WORKING* c:/Users/mgj/ee-model-library/tests/test_statements/test_SOURCES* c:/Users/mgj/ee-model-library/tests/test_revenue/test_PPA*)",
+      "Bash(\"C:\\\\Users\\\\mgj\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python314\\\\python.exe\" -m pytest tests/test_market/ tests/test_checks/ tests/test_reporting/ tests/test_revenue/test_PPA_CFD_001.py tests/test_statements/test_WORKING_CAPITAL_001.py tests/test_statements/test_SOURCES_USES_001.py tests/test_integration/test_scenario_engine.py tests/test_integration/test_parser_vendor.py -q)",
+      "Bash(ls c:/Users/mgj/ee-model-library/tests/test_statements/test_BREAKEVEN* c:/Users/mgj/ee-model-library/tests/test_integration/test_scenario_runner*)",
+      "Bash(\"C:\\\\Users\\\\mgj\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python314\\\\python.exe\" -m pytest tests/test_debt/test_REPOW_DEBT_001.py::test_straight_line_principal -v)",
+      "Bash(\"C:\\\\Users\\\\mgj\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python314\\\\python.exe\" -m pytest tests/test_debt/test_DEBT_001.py -q)",
+      "Bash(git checkout:*)",
+      "Bash(python3 -m pytest tests/ -q)",
+      "Bash(pip --version)",
+      "Bash(py scripts/smoke_test_format.py)",
+      "Bash(py smoke_test.py)",
+      "Bash(py calibration/run_01_holmen_ii.py)",
+      "Bash(py -m pytest tests/ -q --no-header)",
+      "Bash(py -c \":*)",
+      "Bash(py -m pytest tests/test_integration/test_excel_writer.py::test_rev001_net_revenue_written -v)",
+      "Bash(py -m pytest tests/test_integration/test_excel_writer.py::test_all_sheets_present tests/test_integration/test_excel_writer.py::test_sheet_order tests/test_integration/test_excel_writer.py::test_pl_net_income_written -v)"
     ]
   }
 }

@@ -803,3 +803,42 @@ def get_label(field_name: str) -> str:
 def get_units(field_name: str) -> str:
     """Return the units string for a field, defaulting to FIELD_UNITS_DEFAULT (configurable)."""
     return FIELD_UNITS.get(field_name, FIELD_UNITS_DEFAULT)
+
+
+# ============================================================================
+# PER-TECH FINSTAT SHEET MAPPINGS (split-tech mode)
+# ============================================================================
+
+# Template: PL/CF/BS entries from the Statements section of ROW_MAP
+_FINSTAT_TEMPLATE: list[tuple[str, str, int]] = [
+    (mod_id, field, row)
+    for (sheet, mod_id, field), row in ROW_MAP.items()
+    if sheet == "Statements" and mod_id in ("PL_001", "CF_001", "BS_001")
+]
+
+
+def build_per_tech_mappings(
+    tech_ids: list[str],
+) -> tuple[dict[tuple[str, str, str], int], dict[str, str]]:
+    """Generate ROW_MAP and MODULE_SHEET entries for per-tech FinStat sheets.
+
+    Each tech gets a sheet named "{tech_id}.FinStat" (e.g. "PV.FinStat").
+    Row layout mirrors the Statements section (PL rows 6-14, CF rows 16-32,
+    BS rows 34-45).
+
+    Module IDs are prefixed: "{tech_id}_PL_001", "{tech_id}_CF_001", etc.
+
+    Returns:
+        (per_tech_row_map, per_tech_module_sheet)
+    """
+    per_tech_row_map: dict[tuple[str, str, str], int] = {}
+    per_tech_module_sheet: dict[str, str] = {}
+
+    for tid in tech_ids:
+        sheet_name = f"{tid}.FinStat"
+        for mod_id, field, row in _FINSTAT_TEMPLATE:
+            prefixed_mod_id = f"{tid}_{mod_id}"
+            per_tech_row_map[(sheet_name, prefixed_mod_id, field)] = row
+            per_tech_module_sheet[prefixed_mod_id] = sheet_name
+
+    return per_tech_row_map, per_tech_module_sheet

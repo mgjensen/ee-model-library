@@ -1,7 +1,32 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m pytest --tb=short -q)"
+      "Bash(python -m pytest --tb=short -q)",
+      "Bash(py -c \":*)",
+      "Bash(py _tools/retrofit_dates.py)",
+      "Bash(py -m pytest tests/ -q --tb=short)",
+      "Bash(py -m pytest tests/test_market/test_PRICE_CURVES_001.py -v)",
+      "Bash(py -m pytest tests/test_debt/test_DEBT_SCULPT_001.py -v)",
+      "Bash(py -m pytest tests/test_debt/test_DEBT_SCULPT_001.py -v -k \"MultiConstraint\")",
+      "Bash(py -m pytest tests/ -x -q)",
+      "Bash(py -c \"import json; json.load\\(open\\(''registry/assumption_db/AU.json''\\)\\); print\\(''Valid JSON''\\)\")",
+      "Bash(py -c \"import json; dk=json.load\\(open\\(''registry/assumption_db/DK.json''\\)\\); de=json.load\\(open\\(''registry/assumption_db/DE.json''\\)\\); print\\(f''DK: {len\\(dk\\)} keys, DE: {len\\(de\\)} keys — untouched''\\)\")",
+      "Bash(py -m pytest tests/test_revenue/test_REV_002.py -v -k \"degradation\")",
+      "Bash(py -m pytest tests/test_debt/test_DEBT_SCULPT_001.py -v -k \"DualDSCR\")",
+      "Bash(py -m pytest tests/test_debt/test_CASH_SWEEP_001.py -v -k \"dscr_threshold\")",
+      "Bash(py -m pytest tests/test_market/test_PRICE_CURVES_001.py -v -k \"named or strict or short_curve or no_library\")",
+      "Bash(py -m pytest tests/ -v)",
+      "Bash(py -c \"import pyxlsb; print\\(''pyxlsb available''\\)\")",
+      "Bash(find c:/Users/mgj -maxdepth 5 -name *Holmen* -o -name *251117* -o -name *FID_model*)",
+      "Bash(py:*)",
+      "Bash(python -c \":*)",
+      "Bash(grep -n '\"\"Revenue\"\", \"\"REV_003\"\"' assembly/cell_mapper.py)",
+      "Bash(ls calibration/Mulwala*)",
+      "Bash(timeout 90 py -3.14 -c \":*)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\mgj\\Downloads",
+      "c:\\Users\\mgj\\Documents\\ee-model-library\\calibration"
     ]
   }
 }

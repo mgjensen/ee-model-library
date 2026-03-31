@@ -612,6 +612,14 @@ def test_get_excel_formulas_keys():
         "multi_rev": "K57", "gross_rev": "K58", "total_costs": "K59",
         "tolling_mw": "B60", "tolling_price": "B61", "tolling_factor": "C60",
         "tolling_rev": "K60",
+        # FCAS refs
+        "fcas_reg_price": "K70", "fcas_con_price": "K71",
+        "fcas_reg": "K72", "fcas_con": "K73", "fcas_total": "K74",
+        # VTA refs
+        "vta_coloc_pct": "K80", "vta_cap_pct": "K81", "vta_deg_pct": "K82",
+        "vta_tx_pct": "K83", "vta_vol": "K84", "vta_price": "K85",
+        "vta_coloc": "K86", "vta_cap": "K87", "vta_deg": "K88", "vta_tx": "K89",
+        "vta_total": "K90",
     }
     formulas = get_excel_formulas(refs)
     for key in (
@@ -623,6 +631,10 @@ def test_get_excel_formulas_keys():
         "goo_lost_volume", "goo_revenue_lost", "export_tariff_addback",
         "bess_net_ex_multimarket", "multimarket_revenue",
         "tolling_revenue",
+        "fcas_regulation_revenue", "fcas_contingency_revenue", "fcas_total_revenue",
+        "vta_colocation_compensation", "vta_capacity_compensation",
+        "vta_degradation_compensation", "vta_transmission_compensation",
+        "vta_total_compensation",
         "gross_revenue", "total_costs", "net_revenue",
     ):
         assert key in formulas, f"Missing formula key: {key}"
@@ -754,6 +766,12 @@ def test_tolling_formula_in_excel():
         "multi_rev": "K57", "gross_rev": "K58", "total_costs": "K59",
         "tolling_mw": "B60", "tolling_price": "B61", "tolling_factor": "C60",
         "tolling_rev": "K60",
+        "fcas_reg_price": "K70", "fcas_con_price": "K71",
+        "fcas_reg": "K72", "fcas_con": "K73", "fcas_total": "K74",
+        "vta_coloc_pct": "K80", "vta_cap_pct": "K81", "vta_deg_pct": "K82",
+        "vta_tx_pct": "K83", "vta_vol": "K84", "vta_price": "K85",
+        "vta_coloc": "K86", "vta_cap": "K87", "vta_deg": "K88", "vta_tx": "K89",
+        "vta_total": "K90",
     }
     formulas = get_excel_formulas(refs)
     assert "tolling_revenue" in formulas
@@ -958,3 +976,232 @@ def test_degradation_validation_capacity_curve_empty():
 def test_degradation_validation_capacity_curve_invalid():
     with pytest.raises(ValueError, match="capacity_curve values must be in"):
         _make_degradation_inputs(capacity_curve=[0.0])
+
+
+# ---------------------------------------------------------------------------
+# VTA Compensation tests
+# ---------------------------------------------------------------------------
+
+def _vta_inputs(n=12, **overrides):
+    """Build minimal Inputs with VTA fields."""
+    base = dict(
+        periods=n, start_year=2028, start_month=1,
+        power_MW=100.0, energy_MWh_installed=400.0, round_trip_efficiency=0.85,
+        inflation_rate=0.0,
+        discharge_volume_MWh=[1000.0] * n,
+        discharge_price_DKK_per_MWh=[100.0] * n,
+        grid_charge_volume_MWh=[600.0] * n,
+        grid_charge_price_DKK_per_MWh=[50.0] * n,
+        pv_charge_volume_MWh=[400.0] * n,
+        pv_charge_price_DKK_per_MWh=[40.0] * n,
+        goo_price_DKK_per_MWh=[5.0] * n,
+        multimarket_pct=[0.0] * n,
+    )
+    base.update(overrides)
+    return Inputs(**base)
+
+
+def test_vta_inactive_returns_zeros():
+    out = calculate(_vta_inputs(vta_active=False))
+    assert all(v == 0.0 for v in out.vta_total_compensation)
+    assert all(v == 0.0 for v in out.vta_colocation_compensation)
+
+
+def test_vta_colocation_only():
+    n = 12
+    out = calculate(_vta_inputs(
+        vta_active=True,
+        vta_contracted_discharge_MWh=[2000.0] * n,
+        vta_discharge_price_per_MWh=[100.0] * n,
+        vta_colocation_active=True,
+        vta_colocation_shortfall_pct=[0.05] * n,
+    ))
+    # -0.05 * 2000 * 100 / 1000 = -10.0 per period
+    assert out.vta_colocation_compensation[0] == pytest.approx(-10.0)
+    assert all(v == 0.0 for v in out.vta_capacity_compensation)
+
+
+def test_vta_capacity_shortfall():
+    n = 12
+    out = calculate(_vta_inputs(
+        vta_active=True,
+        vta_contracted_discharge_MWh=[1000.0] * n,
+        vta_discharge_price_per_MWh=[200.0] * n,
+        vta_capacity_shortfall_active=True,
+        vta_capacity_shortfall_pct=[0.03] * n,
+    ))
+    # -0.03 * 1000 * 200 / 1000 = -6.0
+    assert out.vta_capacity_compensation[0] == pytest.approx(-6.0)
+
+
+def test_vta_transmission_only():
+    n = 12
+    out = calculate(_vta_inputs(
+        vta_active=True,
+        vta_contracted_discharge_MWh=[500.0] * n,
+        vta_discharge_price_per_MWh=[80.0] * n,
+        vta_transmission_active=True,
+        vta_transmission_loss_pct=[0.10] * n,
+    ))
+    # -0.10 * 500 * 80 / 1000 = -4.0
+    assert out.vta_transmission_compensation[0] == pytest.approx(-4.0)
+
+
+def test_vta_all_layers_combined():
+    n = 12
+    out = calculate(_vta_inputs(
+        vta_active=True,
+        vta_contracted_discharge_MWh=[1000.0] * n,
+        vta_discharge_price_per_MWh=[100.0] * n,
+        vta_colocation_active=True,
+        vta_colocation_shortfall_pct=[0.02] * n,
+        vta_capacity_shortfall_active=True,
+        vta_capacity_shortfall_pct=[0.03] * n,
+        vta_degradation_active=True,
+        vta_degradation_shortfall_pct=[0.01] * n,
+        vta_transmission_active=True,
+        vta_transmission_loss_pct=[0.04] * n,
+    ))
+    # Total: -(0.02+0.03+0.01+0.04) * 1000 * 100 / 1000 = -10.0
+    assert out.vta_total_compensation[0] == pytest.approx(-10.0)
+
+
+def test_vta_deducts_from_net_revenue():
+    n = 12
+    out_no_vta = calculate(_vta_inputs())
+    out_vta = calculate(_vta_inputs(
+        vta_active=True,
+        vta_contracted_discharge_MWh=[1000.0] * n,
+        vta_discharge_price_per_MWh=[100.0] * n,
+        vta_colocation_active=True,
+        vta_colocation_shortfall_pct=[0.05] * n,
+    ))
+    # VTA compensation is negative, so net_revenue should be lower
+    assert sum(out_vta.net_revenue) < sum(out_no_vta.net_revenue)
+
+
+def test_vta_tolling_revenue_unchanged():
+    n = 12
+    out_with_vta = calculate(_vta_inputs(
+        tolling_active=True,
+        tolling_contracted_mw=50.0,
+        tolling_price_DKK_per_mw_per_year=100_000.0,
+        tolling_start_period=0,
+        tolling_end_period=11,
+        vta_active=True,
+        vta_contracted_discharge_MWh=[1000.0] * n,
+        vta_discharge_price_per_MWh=[100.0] * n,
+        vta_colocation_active=True,
+        vta_colocation_shortfall_pct=[0.05] * n,
+    ))
+    out_no_vta = calculate(_vta_inputs(
+        tolling_active=True,
+        tolling_contracted_mw=50.0,
+        tolling_price_DKK_per_mw_per_year=100_000.0,
+        tolling_start_period=0,
+        tolling_end_period=11,
+    ))
+    # Tolling revenue should NOT be reduced by VTA compensation
+    assert out_with_vta.tolling_revenue[0] == pytest.approx(out_no_vta.tolling_revenue[0])
+
+
+def test_vta_validation_missing_volume():
+    with pytest.raises(ValueError, match="vta_contracted_discharge_MWh"):
+        _vta_inputs(
+            vta_active=True,
+            vta_contracted_discharge_MWh=[1000.0] * 8,  # wrong length (need 12)
+            vta_discharge_price_per_MWh=[100.0] * 12,
+        )
+
+
+# ---------------------------------------------------------------------------
+# FCAS Revenue tests
+# ---------------------------------------------------------------------------
+
+def test_fcas_inactive_returns_zeros():
+    out = calculate(_vta_inputs(fcas_active=False))
+    assert all(v == 0.0 for v in out.fcas_total_revenue)
+
+
+def test_fcas_regulation_only():
+    n = 12
+    out = calculate(_vta_inputs(
+        fcas_active=True,
+        fcas_regulation_price_per_MWh=[20.0] * n,
+        fcas_contingency_price_per_MWh=[0.0] * n,
+    ))
+    # dis_volume = 1000 (from _vta_inputs), reg = 1000 * 20 / 1000 = 20.0
+    assert out.fcas_regulation_revenue[0] == pytest.approx(20.0)
+    assert out.fcas_contingency_revenue[0] == pytest.approx(0.0)
+
+
+def test_fcas_both_streams():
+    n = 12
+    out = calculate(_vta_inputs(
+        fcas_active=True,
+        fcas_regulation_price_per_MWh=[15.0] * n,
+        fcas_contingency_price_per_MWh=[10.0] * n,
+    ))
+    # reg = 1000*15/1000=15, con = 1000*10/1000=10, total = 25
+    assert out.fcas_total_revenue[0] == pytest.approx(25.0)
+
+
+def test_fcas_adds_to_gross_revenue():
+    n = 12
+    out_no_fcas = calculate(_vta_inputs())
+    out_fcas = calculate(_vta_inputs(
+        fcas_active=True,
+        fcas_regulation_price_per_MWh=[20.0] * n,
+        fcas_contingency_price_per_MWh=[10.0] * n,
+    ))
+    diff = sum(out_fcas.gross_revenue) - sum(out_no_fcas.gross_revenue)
+    assert diff == pytest.approx(sum(out_fcas.fcas_total_revenue), rel=1e-6)
+
+
+def test_fcas_external_mode_returns_zeros():
+    n = 12
+    out = calculate(Inputs(
+        periods=n, start_year=2028, start_month=1,
+        power_MW=100.0, energy_MWh_installed=400.0, round_trip_efficiency=0.85,
+        discharge_volume_MWh=[0.0] * n,
+        discharge_price_DKK_per_MWh=[0.0] * n,
+        grid_charge_volume_MWh=[0.0] * n,
+        grid_charge_price_DKK_per_MWh=[0.0] * n,
+        pv_charge_volume_MWh=[0.0] * n,
+        pv_charge_price_DKK_per_MWh=[0.0] * n,
+        goo_price_DKK_per_MWh=[0.0] * n,
+        multimarket_pct=[0.0] * n,
+        external_mode=True,
+        external_bess_revenue_DKKk=[100.0] * n,
+        fcas_active=True,
+        fcas_regulation_price_per_MWh=[20.0] * n,
+        fcas_contingency_price_per_MWh=[10.0] * n,
+    ))
+    assert all(v == 0.0 for v in out.fcas_total_revenue)
+
+
+def test_fcas_validation():
+    with pytest.raises(ValueError, match="fcas_regulation_price_per_MWh"):
+        _vta_inputs(
+            fcas_active=True,
+            fcas_regulation_price_per_MWh=[20.0] * 8,  # wrong length
+            fcas_contingency_price_per_MWh=[10.0] * 12,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Backward compatibility
+# ---------------------------------------------------------------------------
+
+def test_existing_inputs_unchanged():
+    """Old-style inputs (no VTA/FCAS fields) still work; new outputs are zero."""
+    out = calculate(_flat())
+    assert len(out.vta_total_compensation) == 24
+    assert all(v == 0.0 for v in out.vta_total_compensation)
+    assert len(out.fcas_total_revenue) == 24
+    assert all(v == 0.0 for v in out.fcas_total_revenue)
+    # Gross and net revenue unchanged from pre-VTA/FCAS behavior
+    for p in range(24):
+        assert out.gross_revenue[p] == pytest.approx(
+            out.discharge_revenue[p] + out.multimarket_revenue[p] + out.tolling_revenue[p]
+        )

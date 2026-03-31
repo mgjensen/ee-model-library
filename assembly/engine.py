@@ -453,11 +453,212 @@ def _consolidate_split_tech(entities: list[TechEntity], out: dict, tl: TimelineC
             combined_dep = [combined_dep[p] + pl.depreciation[p] for p in range(n)]
             combined_tax = [combined_tax[p] + pl.tax_charge[p] for p in range(n)]
 
+    # Aggregate CAPEX from per-tech outputs
+    combined_capex = _zeros(n)
+    combined_cumulative_capex = _zeros(n)
+    for entity in entities:
+        tid = entity.tech_id
+        capex_out = out.get(f"{tid}_CAPEX_001")
+        if capex_out:
+            combined_capex = [combined_capex[p] + capex_out.total_capex_monthly[p] for p in range(n)]
+            combined_cumulative_capex = [combined_cumulative_capex[p] + capex_out.cumulative_capex[p] for p in range(n)]
+        repow = out.get(f"{tid}_BESS_REPOW_001")
+        if repow:
+            combined_capex = [combined_capex[p] + repow.repowering_cost_monthly[p] for p in range(n)]
+
     # Combined PL (interest added later by existing debt wiring)
     out["_split_tech_rev"] = combined_rev
     out["_split_tech_opex"] = combined_opex
     out["_split_tech_dep"] = combined_dep
     out["_split_tech_tax"] = combined_tax
+    out["_split_tech_capex"] = combined_capex
+    out["_split_tech_cumulative_capex"] = combined_cumulative_capex
+
+
+def _allocate_debt_to_techs(
+    entities: list[TechEntity],
+    out: dict,
+    tl: TimelineConfig,
+) -> None:
+    """Allocate combined debt pro-rata by cumulative CAPEX share to each tech.
+
+    For each period p:
+        share[tid][p] = tech_cumulative_capex[p] / total_cumulative_capex[p]
+
+    Allocated arrays: drawdown, principal, interest, closing_balance.
+    Results stored as out["{tid}_DEBT_ALLOC"] dict.
+    """
+    n = tl.periods
+
+    # Build per-tech cumulative CAPEX
+    tech_cum: dict[str, list[float]] = {}
+    for entity in entities:
+        tid = entity.tech_id
+        capex_out = out.get(f"{tid}_CAPEX_001")
+        tech_cum[tid] = capex_out.cumulative_capex if capex_out else _zeros(n)
+
+    total_cum = out.get("_split_tech_cumulative_capex", _zeros(n))
+
+    # Compute per-tech shares (guard against division by zero)
+    tech_share: dict[str, list[float]] = {}
+    for tid, cum in tech_cum.items():
+        share = [0.0] * n
+        for p in range(n):
+            if total_cum[p] > 0.001:
+                share[p] = cum[p] / total_cum[p]
+            elif len(tech_cum) == 1:
+                share[p] = 1.0
+        tech_share[tid] = share
+
+    # Aggregate combined debt arrays from all active debt modules
+    combined_interest = _zeros(n)
+    combined_drawdown = _zeros(n)
+    combined_principal = _zeros(n)
+    combined_closing = _zeros(n)
+
+    debt_out = out.get("DEBT_001")
+    if debt_out:
+        combined_interest = list(debt_out.interest)
+        combined_drawdown = list(debt_out.drawdown) if debt_out.drawdown else _zeros(n)
+        combined_principal = list(debt_out.principal) if debt_out.principal else _zeros(n)
+        combined_closing = list(debt_out.closing_balance)
+
+    sculpt_out = out.get("DEBT_SCULPT_001")
+    if sculpt_out:
+        combined_interest = [combined_interest[p] + sculpt_out.interest_accrued[p] for p in range(n)]
+        combined_drawdown = _add_series(combined_drawdown, sculpt_out.drawdown, n=n)
+        combined_principal = _add_series(combined_principal, sculpt_out.principal, n=n)
+        combined_closing = [combined_closing[p] + sculpt_out.closing_balance[p] for p in range(n)]
+
+    refi_out = out.get("DEBT_REFI_001")
+    if refi_out:
+        combined_interest = [combined_interest[p] + refi_out.interest[p] for p in range(n)]
+        combined_drawdown = _add_series(combined_drawdown, refi_out.drawdown, n=n)
+        combined_principal = _add_series(combined_principal, refi_out.principal, n=n)
+        combined_closing = [combined_closing[p] + refi_out.closing_balance[p] for p in range(n)]
+
+    linear_out = out.get("DEBT_LINEAR_001")
+    if linear_out:
+        combined_interest = [combined_interest[p] + linear_out.total_interest[p] for p in range(n)]
+        combined_drawdown = _add_series(combined_drawdown, linear_out.total_drawdown, n=n)
+        combined_principal = _add_series(combined_principal, linear_out.total_principal, n=n)
+        combined_closing = [combined_closing[p] + linear_out.total_closing_balance[p] for p in range(n)]
+
+    # Allocate to each tech by CAPEX share
+    for entity in entities:
+        tid = entity.tech_id
+        share = tech_share.get(tid, _zeros(n))
+        out[f"{tid}_DEBT_ALLOC"] = {
+            "interest": [combined_interest[p] * share[p] for p in range(n)],
+            "drawdown": [combined_drawdown[p] * share[p] for p in range(n)],
+            "principal": [combined_principal[p] * share[p] for p in range(n)],
+            "closing_balance": [combined_closing[p] * share[p] for p in range(n)],
+        }
+
+
+def _rerun_per_tech_levered(
+    entity: TechEntity,
+    tl: TimelineConfig,
+    out: dict,
+) -> None:
+    """Re-run per-tech PL_001, CF_001, BS_001 with allocated debt (levered).
+
+    Overwrites the unlevered per-tech outputs created by _run_per_tech().
+    If entity.independent_tax is True, also re-runs per-tech tax with
+    interest deductions.
+    """
+    n = tl.periods
+    tid = entity.tech_id
+    alloc = out.get(f"{tid}_DEBT_ALLOC")
+    if alloc is None:
+        return  # no debt allocated — keep unlevered results
+
+    pl_old = out.get(f"{tid}_PL_001")
+    if pl_old is None:
+        return
+
+    interest = alloc["interest"]
+
+    # --- Optionally re-run per-tech tax with allocated interest ---
+    dep = list(pl_old.depreciation)
+    tax_charge = list(pl_old.tax_charge)
+
+    if entity.independent_tax and entity.tax_config is not None:
+        ebitda_tech = [pl_old.gross_revenue[p] - pl_old.total_opex[p] for p in range(n)]
+        tax_inp = entity.tax_config
+        tax_inp = tax_inp.model_copy(update={
+            "ebitda": ebitda_tech,
+            "interest_expense": interest,
+        })
+        # Auto-wire capex_by_bucket if empty
+        if hasattr(tax_inp, 'capex_by_bucket'):
+            if not tax_inp.capex_by_bucket or all(all(v == 0 for v in b) for b in tax_inp.capex_by_bucket):
+                capex_out = out.get(f"{tid}_CAPEX_001")
+                if capex_out:
+                    cm = capex_out.total_capex_monthly
+                    tax_inp = tax_inp.model_copy(update={
+                        "capex_by_bucket": [cm] + [_zeros(n) for _ in range(6)]
+                    })
+        # Try TAX_AU_001 first, then TAX_001
+        tax_out_tech = None
+        try:
+            tax_out_tech = TAX_AU_001.calculate(_inject_timeline(tax_inp, tl))
+            out[f"{tid}_TAX_AU_001"] = tax_out_tech
+        except Exception:
+            try:
+                tax_out_tech = TAX_001.calculate(_inject_timeline(tax_inp, tl))
+                out[f"{tid}_TAX_001"] = tax_out_tech
+            except Exception:
+                pass
+
+        if tax_out_tech:
+            dep = list(tax_out_tech.tax_depreciation)
+            repow = out.get(f"{tid}_BESS_REPOW_001")
+            if repow:
+                dep = [dep[p] + repow.accounting_depreciation_monthly[p] for p in range(n)]
+            tax_charge = list(tax_out_tech.tax_charge_accrued)
+
+    # --- Re-run PL_001 with allocated interest ---
+    pl_inputs = PL_001.Inputs(
+        periods=n, start_year=tl.start_year, start_month=tl.start_month,
+        gross_revenue=pl_old.gross_revenue,
+        total_opex=pl_old.total_opex,
+        depreciation=dep,
+        interest_expense=interest,
+        tax_charge=tax_charge,
+    )
+    pl_out = PL_001.calculate(pl_inputs)
+    out[f"{tid}_PL_001"] = pl_out
+
+    # --- Re-run CF_001 with allocated debt flows ---
+    capex_out = out.get(f"{tid}_CAPEX_001")
+    cf_capex = capex_out.total_capex_monthly if capex_out else _zeros(n)
+    repow = out.get(f"{tid}_BESS_REPOW_001")
+    if repow:
+        cf_capex = [cf_capex[p] + repow.repowering_cost_monthly[p] for p in range(n)]
+
+    cf_inputs = CF_001.Inputs(
+        periods=n, start_year=tl.start_year, start_month=tl.start_month,
+        net_income=pl_out.net_income,
+        depreciation=dep,
+        capex_monthly=cf_capex,
+        debt_drawdown=alloc["drawdown"],
+        principal_repayment=alloc["principal"],
+        interest_paid=interest,
+    )
+    cf_out = CF_001.calculate(cf_inputs)
+    out[f"{tid}_CF_001"] = cf_out
+
+    # --- Re-run BS_001 with allocated debt balance ---
+    bs_inputs = BS_001.Inputs(
+        periods=n, start_year=tl.start_year, start_month=tl.start_month,
+        capex_monthly=cf_capex,
+        depreciation_monthly=dep,
+        closing_cash=cf_out.closing_cash,
+        debt_closing_balance=alloc["closing_balance"],
+        net_income=pl_out.net_income,
+    )
+    out[f"{tid}_BS_001"] = BS_001.calculate(bs_inputs)
 
 
 # ============================================================================
@@ -704,30 +905,48 @@ def run(config: ProjectConfig) -> AssemblyResult:
         )
 
     # ------------------------------------------------------------------
+    # SPLIT-TECH PHASE 2: Allocate debt back to per-tech entities
+    # ------------------------------------------------------------------
+    if config.tech_entities is not None and any(
+        k in out for k in ("DEBT_001", "DEBT_SCULPT_001", "DEBT_REFI_001", "DEBT_LINEAR_001")
+    ):
+        _allocate_debt_to_techs(config.tech_entities, out, tl)
+        for entity in config.tech_entities:
+            _rerun_per_tech_levered(entity, tl, out)
+        # Re-consolidate with updated (levered) per-tech data
+        _consolidate_split_tech(config.tech_entities, out, tl)
+
+    # ------------------------------------------------------------------
     # Step 8: TAX_001 — tax (wired: ebitda from rev-opex, interest from debt)
     # ------------------------------------------------------------------
     if config.tax is not None:
         debt_out = out.get("DEBT_001")  # None if DEBT_001 not run; interest defaults to zeros
 
         # Combined net revenue (gross_revenue - costs) from PV + BESS + Wind
-        rev_pv_net    = out["REV_001"].net_revenue  if "REV_001"  in out else None
-        rev_bess_net  = out["REV_002"].net_revenue  if "REV_002"  in out else None
-        rev_wind_net  = out["REV_003"].net_revenue  if "REV_003"  in out else None
-        opex_pv_tot   = out["OPEX_001"].total_opex  if "OPEX_001" in out else None
-        opex_bess_tot = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
-        opex_wind_tot = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
+        if "_split_tech_rev" in out:
+            gross_rev = out["_split_tech_rev"]
+            total_opex_combined = out["_split_tech_opex"]
+        else:
+            rev_pv_net    = out["REV_001"].net_revenue  if "REV_001"  in out else None
+            rev_bess_net  = out["REV_002"].net_revenue  if "REV_002"  in out else None
+            rev_wind_net  = out["REV_003"].net_revenue  if "REV_003"  in out else None
+            opex_pv_tot   = out["OPEX_001"].total_opex  if "OPEX_001" in out else None
+            opex_bess_tot = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
+            opex_wind_tot = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
+            gross_rev = _add_series(rev_pv_net, rev_bess_net, rev_wind_net, n=n)
+            total_opex_combined = _add_series(opex_pv_tot, opex_bess_tot, opex_wind_tot, n=n)
 
         # EBITDA = combined net revenue - additional OPEX
-        gross_rev = _add_series(rev_pv_net, rev_bess_net, rev_wind_net, n=n)
-        total_opex_combined = _add_series(opex_pv_tot, opex_bess_tot, opex_wind_tot, n=n)
         ebitda_series = [gross_rev[p] - total_opex_combined[p] for p in range(n)]
 
         # Interest from DEBT_001
         interest_series = debt_out.interest if debt_out else _zeros(n)
 
-        # capex_by_bucket: use user-supplied or auto-fill bucket 0 from CAPEX_001
+        # capex_by_bucket: use user-supplied or auto-fill bucket 0 from CAPEX/split-tech
         if config.tax.capex_by_bucket is not None:
             capex_by_bucket = config.tax.capex_by_bucket
+        elif "_split_tech_capex" in out:
+            capex_by_bucket = [out["_split_tech_capex"]] + [_zeros(n) for _ in range(6)]
         elif "CAPEX_001" in out:
             capex_monthly = out["CAPEX_001"].total_capex_monthly
             capex_by_bucket = [capex_monthly] + [_zeros(n) for _ in range(6)]
@@ -772,14 +991,18 @@ def run(config: ProjectConfig) -> AssemblyResult:
     if config.tax_lt is not None:
         tax_lt_inp = config.tax_lt
         # Auto-wire ebitda, interest, and capex from upstream modules
-        _rev_pv_net    = out["REV_001"].net_revenue  if "REV_001"  in out else None
-        _rev_bess_net  = out["REV_002"].net_revenue  if "REV_002"  in out else None
-        _rev_wind_net  = out["REV_003"].net_revenue  if "REV_003"  in out else None
-        _opex_pv_tot   = out["OPEX_001"].total_opex  if "OPEX_001" in out else None
-        _opex_bess_tot = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
-        _opex_wind_tot = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
-        _gross_rev_lt = _add_series(_rev_pv_net, _rev_bess_net, _rev_wind_net, n=n)
-        _opex_lt = _add_series(_opex_pv_tot, _opex_bess_tot, _opex_wind_tot, n=n)
+        if "_split_tech_rev" in out:
+            _gross_rev_lt = out["_split_tech_rev"]
+            _opex_lt = out["_split_tech_opex"]
+        else:
+            _rev_pv_net    = out["REV_001"].net_revenue  if "REV_001"  in out else None
+            _rev_bess_net  = out["REV_002"].net_revenue  if "REV_002"  in out else None
+            _rev_wind_net  = out["REV_003"].net_revenue  if "REV_003"  in out else None
+            _opex_pv_tot   = out["OPEX_001"].total_opex  if "OPEX_001" in out else None
+            _opex_bess_tot = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
+            _opex_wind_tot = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
+            _gross_rev_lt = _add_series(_rev_pv_net, _rev_bess_net, _rev_wind_net, n=n)
+            _opex_lt = _add_series(_opex_pv_tot, _opex_bess_tot, _opex_wind_tot, n=n)
         _ebitda_lt = [_gross_rev_lt[p] - _opex_lt[p] for p in range(n)]
 
         # Interest from all debt modules
@@ -799,7 +1022,9 @@ def run(config: ProjectConfig) -> AssemblyResult:
         if not tax_lt_inp.capex_by_bucket or all(
             all(v == 0 for v in b) for b in tax_lt_inp.capex_by_bucket
         ):
-            if "CAPEX_001" in out:
+            if "_split_tech_capex" in out:
+                _capex_by_bucket_lt = [out["_split_tech_capex"]] + [_zeros(n) for _ in range(6)]
+            elif "CAPEX_001" in out:
                 _capex_m = out["CAPEX_001"].total_capex_monthly
                 _capex_by_bucket_lt = [_capex_m] + [_zeros(n) for _ in range(6)]
             else:
@@ -826,14 +1051,18 @@ def run(config: ProjectConfig) -> AssemblyResult:
     if config.tax_au is not None:
         tax_au_inp = config.tax_au
         # Auto-wire ebitda, interest, capex (same pattern as TAX_LT_001)
-        _rev_pv_au    = out["REV_001"].net_revenue  if "REV_001"  in out else None
-        _rev_bess_au  = out["REV_002"].net_revenue  if "REV_002"  in out else None
-        _rev_wind_au  = out["REV_003"].net_revenue  if "REV_003"  in out else None
-        _opex_pv_au   = out["OPEX_001"].total_opex  if "OPEX_001" in out else None
-        _opex_bess_au = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
-        _opex_wind_au = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
-        _gross_rev_au = _add_series(_rev_pv_au, _rev_bess_au, _rev_wind_au, n=n)
-        _opex_au = _add_series(_opex_pv_au, _opex_bess_au, _opex_wind_au, n=n)
+        if "_split_tech_rev" in out:
+            _gross_rev_au = out["_split_tech_rev"]
+            _opex_au = out["_split_tech_opex"]
+        else:
+            _rev_pv_au    = out["REV_001"].net_revenue  if "REV_001"  in out else None
+            _rev_bess_au  = out["REV_002"].net_revenue  if "REV_002"  in out else None
+            _rev_wind_au  = out["REV_003"].net_revenue  if "REV_003"  in out else None
+            _opex_pv_au   = out["OPEX_001"].total_opex  if "OPEX_001" in out else None
+            _opex_bess_au = out["OPEX_002"].total_opex  if "OPEX_002" in out else None
+            _opex_wind_au = out["OPEX_003"].total_opex  if "OPEX_003" in out else None
+            _gross_rev_au = _add_series(_rev_pv_au, _rev_bess_au, _rev_wind_au, n=n)
+            _opex_au = _add_series(_opex_pv_au, _opex_bess_au, _opex_wind_au, n=n)
         _ebitda_au = [_gross_rev_au[p] - _opex_au[p] for p in range(n)]
         _debt_out_au = out.get("DEBT_001")
         _sculpt_out_au = out.get("DEBT_SCULPT_001")
@@ -849,7 +1078,9 @@ def run(config: ProjectConfig) -> AssemblyResult:
         if not tax_au_inp.capex_by_bucket or all(
             all(v == 0 for v in b) for b in tax_au_inp.capex_by_bucket
         ):
-            if "CAPEX_001" in out:
+            if "_split_tech_capex" in out:
+                _capex_by_bucket_au = [out["_split_tech_capex"]] + [_zeros(n) for _ in range(6)]
+            elif "CAPEX_001" in out:
                 _capex_au = out["CAPEX_001"].total_capex_monthly
                 _capex_by_bucket_au = [_capex_au] + [_zeros(n) for _ in range(6)]
             else:
@@ -956,12 +1187,16 @@ def run(config: ProjectConfig) -> AssemblyResult:
         sc = config.statements
 
         repow_out = out.get("BESS_REPOW_001")
-        cf_dep = _tax_any_cf.tax_depreciation if _tax_any_cf else _zeros(n)
-        if repow_out:
-            cf_dep = [cf_dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
-        cf_capex = capex_out.total_capex_monthly if capex_out else _zeros(n)
-        if repow_out:
-            cf_capex = [cf_capex[p] + repow_out.repowering_cost_monthly[p] for p in range(n)]
+        if "_split_tech_capex" in out:
+            cf_capex = out["_split_tech_capex"]
+            cf_dep = out["_split_tech_dep"]
+        else:
+            cf_dep = _tax_any_cf.tax_depreciation if _tax_any_cf else _zeros(n)
+            if repow_out:
+                cf_dep = [cf_dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
+            cf_capex = capex_out.total_capex_monthly if capex_out else _zeros(n)
+            if repow_out:
+                cf_capex = [cf_capex[p] + repow_out.repowering_cost_monthly[p] for p in range(n)]
 
         cf_draw = debt_out.drawdown if debt_out else []
         cf_princ = debt_out.principal if debt_out else []
@@ -1096,11 +1331,15 @@ def run(config: ProjectConfig) -> AssemblyResult:
         sc = config.statements
 
         repow_out = out.get("BESS_REPOW_001")
-        bs_capex = capex_out.total_capex_monthly if capex_out else _zeros(n)
-        bs_dep = _tax_any_bs.tax_depreciation if _tax_any_bs else _zeros(n)
-        if repow_out:
-            bs_capex = [bs_capex[p] + repow_out.repowering_cost_monthly[p] for p in range(n)]
-            bs_dep = [bs_dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
+        if "_split_tech_capex" in out:
+            bs_capex = list(out["_split_tech_capex"])  # copy — may be mutated by IDC below
+            bs_dep = out["_split_tech_dep"]
+        else:
+            bs_capex = capex_out.total_capex_monthly if capex_out else _zeros(n)
+            bs_dep = _tax_any_bs.tax_depreciation if _tax_any_bs else _zeros(n)
+            if repow_out:
+                bs_capex = [bs_capex[p] + repow_out.repowering_cost_monthly[p] for p in range(n)]
+                bs_dep = [bs_dep[p] + repow_out.accounting_depreciation_monthly[p] for p in range(n)]
         # Capitalise pre-COD interest as IDC (interest during construction)
         _cod = (config.constr_finance.cod_period if config.constr_finance
                 else (config.capex.construction_start_period + config.capex.construction_periods

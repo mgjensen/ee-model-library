@@ -84,7 +84,7 @@ def test_get_row_rev_001_net_revenue():
 
 
 def test_get_row_rev_002_net_revenue():
-    assert get_row("REV_002", "net_revenue") == 58
+    assert get_row("REV_002", "net_revenue") == 66
 
 
 def test_get_row_opex_001_total_opex():

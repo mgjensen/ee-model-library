@@ -992,6 +992,9 @@ def write_workbook(
 
     capex_out = result.outputs.get("CAPEX_001")
     capex_monthly = capex_out.total_capex_monthly if capex_out else None
+    # In split-tech mode, use consolidated CAPEX for phase labels if no top-level CAPEX
+    if not capex_monthly and "_split_tech_capex" in result.outputs:
+        capex_monthly = result.outputs["_split_tech_capex"]
 
     # Step 4: Populate calculation sheets — formulas on FS_Monthly, values elsewhere
     for sheet_name in ["Revenue", "Costs", "Debt", "FS_Monthly"]:
@@ -1003,6 +1006,42 @@ def write_workbook(
         _write_subsection_labels(ws, sheet_name)
         _apply_column_formatting(ws, n)
         ws.freeze_panes = "L5"
+
+    # Step 4b: Per-tech FinStat sheets (split-tech mode only)
+    _per_tech_extra_rm: dict = {}
+    _per_tech_extra_ms: dict = {}
+    if config.tech_entities:
+        from assembly.cell_mapper import (
+            build_per_tech_mappings, ROW_MAP as _ROW_MAP, MODULE_SHEET as _MODULE_SHEET,
+            SUBSECTION_LABELS,
+        )
+        tech_ids = [e.tech_id for e in config.tech_entities]
+        _per_tech_extra_rm, _per_tech_extra_ms = build_per_tech_mappings(tech_ids)
+        # Temporarily extend global mappings so _write_time_series_rows can find them
+        _ROW_MAP.update(_per_tech_extra_rm)
+        _MODULE_SHEET.update(_per_tech_extra_ms)
+
+        # Determine capex_monthly for header phase labels
+        _st_capex = result.outputs.get("_split_tech_capex")
+
+        for tid in tech_ids:
+            sheet_name = f"{tid}.FinStat"
+            ws_tech = wb.create_sheet(sheet_name)
+            _write_header_rows(ws_tech, sheet_name, n, sy, sm,
+                               capex_monthly=_st_capex or capex_monthly)
+            _write_time_series_rows(ws_tech, result, assumption_map=assumption_map)
+            # Add subsection labels mirroring FS_Monthly
+            for (sht, row_num), label in SUBSECTION_LABELS.items():
+                if sht == "FS_Monthly":
+                    ws_tech.cell(row=row_num, column=COL_LABEL, value=label)
+            _apply_column_formatting(ws_tech, n)
+            ws_tech.freeze_panes = "L5"
+
+        # Restore globals
+        for key in _per_tech_extra_rm:
+            _ROW_MAP.pop(key, None)
+        for key in _per_tech_extra_ms:
+            _MODULE_SHEET.pop(key, None)
 
     _write_fs_annual(wb["FS_Annual"], result, config)
     _write_subsection_labels(wb["FS_Annual"], "FS_Annual")

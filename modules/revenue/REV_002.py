@@ -1,11 +1,11 @@
 """
 MODULE_ID:    REV_002
-VERSION:      1.0
+VERSION:      1.1
 TIER:         detailed
 MARKETS:      ["DK", "DE", "AU", "SE", "*"]
 TECHNOLOGIES: ["BESS"]
 CREATED:      2026-03-17
-MODIFIED:     2026-03-18
+MODIFIED:     2026-03-29
 
 BESS revenue calculation — sub-sections A through G per EE_MODEL_BUILD_SPEC.md §5.2.
 Every line item is a named output field; no opaque totals.
@@ -21,6 +21,9 @@ Sub-sections:
                             export tariff add-back on lost PV volume
   F  Multimarket revenue  — % of BESS net revenue (ex-multimarket) from curve
   G  Summary              — gross revenue, total costs, net revenue
+  H  Tolling agreement    — contracted MW × annual fee
+  I  FCAS revenue         — regulation + contingency ancillary services (AU NEM)
+  J  VTA compensation     — 4-layer deductions from virtual tolling agreement
 
 Source: EE_MODEL_BUILD_SPEC.md v2.0 §5.2
 """
@@ -125,6 +128,24 @@ class Inputs(BaseModel):
         None, description="Annual capacity retention factors (0-1), one per operational year. Scales discharge volume."
     )
 
+    # --- I. FCAS revenue (AU NEM ancillary services) ---
+    fcas_active: bool = Field(False, description="Enable FCAS revenue streams")
+    fcas_regulation_price_per_MWh: list[float] = Field(default_factory=list)
+    fcas_contingency_price_per_MWh: list[float] = Field(default_factory=list)
+
+    # --- J. VTA compensation (virtual tolling agreement risk layers) ---
+    vta_active: bool = Field(False, description="Enable VTA compensation deductions from tolling")
+    vta_contracted_discharge_MWh: list[float] = Field(default_factory=list)
+    vta_discharge_price_per_MWh: list[float] = Field(default_factory=list)
+    vta_colocation_active: bool = Field(False)
+    vta_colocation_shortfall_pct: list[float] = Field(default_factory=list)
+    vta_capacity_shortfall_active: bool = Field(False)
+    vta_capacity_shortfall_pct: list[float] = Field(default_factory=list)
+    vta_degradation_active: bool = Field(False)
+    vta_degradation_shortfall_pct: list[float] = Field(default_factory=list)
+    vta_transmission_active: bool = Field(False)
+    vta_transmission_loss_pct: list[float] = Field(default_factory=list)
+
     # External curve pass-through mode
     external_mode: bool = Field(False, description="If True, use external BESS revenue curve instead of internal calc")
     external_bess_revenue_DKKk: list[float] = Field(default_factory=list)
@@ -149,6 +170,9 @@ class Inputs(BaseModel):
                         f"tolling_start_period {self.tolling_start_period} > "
                         f"tolling_end_period {self.tolling_end_period}"
                     )
+            # VTA works in external mode (has own volume/price inputs)
+            self._validate_vta(n)
+            # FCAS skipped in external mode (no discharge volume)
             return self
         time_series = {
             "discharge_volume_MWh": self.discharge_volume_MWh,
@@ -183,7 +207,36 @@ class Inputs(BaseModel):
                 raise ValueError("capacity_curve must not be empty when provided")
             if any(v <= 0 or v > 1.0 for v in self.capacity_curve):
                 raise ValueError("capacity_curve values must be in (0, 1]")
+        # FCAS validation
+        if self.fcas_active:
+            for name, arr in [
+                ("fcas_regulation_price_per_MWh", self.fcas_regulation_price_per_MWh),
+                ("fcas_contingency_price_per_MWh", self.fcas_contingency_price_per_MWh),
+            ]:
+                if arr and len(arr) != n:
+                    raise ValueError(f"{name} length {len(arr)} != periods {n}")
+        # VTA validation
+        self._validate_vta(n)
         return self
+
+    def _validate_vta(self, n: int) -> None:
+        if not self.vta_active:
+            return
+        for name, arr in [
+            ("vta_contracted_discharge_MWh", self.vta_contracted_discharge_MWh),
+            ("vta_discharge_price_per_MWh", self.vta_discharge_price_per_MWh),
+        ]:
+            if len(arr) != n:
+                raise ValueError(f"{name} length {len(arr)} != periods {n}")
+        layer_checks = [
+            (self.vta_colocation_active, "vta_colocation_shortfall_pct", self.vta_colocation_shortfall_pct),
+            (self.vta_capacity_shortfall_active, "vta_capacity_shortfall_pct", self.vta_capacity_shortfall_pct),
+            (self.vta_degradation_active, "vta_degradation_shortfall_pct", self.vta_degradation_shortfall_pct),
+            (self.vta_transmission_active, "vta_transmission_loss_pct", self.vta_transmission_loss_pct),
+        ]
+        for active, name, arr in layer_checks:
+            if active and arr and len(arr) != n:
+                raise ValueError(f"{name} length {len(arr)} != periods {n}")
 
 
 # ============================================================================
@@ -231,10 +284,22 @@ class Outputs(BaseModel):
     # --- H. Tolling ---
     tolling_revenue: list[float]               # DKKk — contracted MW × price/MW/yr / 12
 
+    # --- I. FCAS ---
+    fcas_regulation_revenue: list[float]        # currency-k
+    fcas_contingency_revenue: list[float]       # currency-k
+    fcas_total_revenue: list[float]             # currency-k
+
+    # --- J. VTA compensation ---
+    vta_colocation_compensation: list[float]    # currency-k (negative)
+    vta_capacity_compensation: list[float]      # currency-k (negative)
+    vta_degradation_compensation: list[float]   # currency-k (negative)
+    vta_transmission_compensation: list[float]  # currency-k (negative)
+    vta_total_compensation: list[float]         # currency-k (sum of 4 layers)
+
     # --- G. Summary ---
-    gross_revenue: list[float]                  # DKKk — discharge + multimarket + tolling
+    gross_revenue: list[float]                  # DKKk — discharge + multimarket + tolling + FCAS
     total_costs: list[float]                    # DKKk — charging + import + export − adjustments
-    net_revenue: list[float]                    # DKKk
+    net_revenue: list[float]                    # DKKk — gross − costs + VTA compensation
 
     # --- Degradation curves (actual values used per period) ---
     effective_rte: list[float]                 # RTE applied each period (flat or from curve)
@@ -385,6 +450,44 @@ def _combined_export_tariff_rate_inflated(
 
 
 # ============================================================================
+# VTA + FCAS HELPERS
+# ============================================================================
+
+def _vta_layer(active: bool, pct: list[float], vol: list[float],
+               price: list[float], n: int) -> list[float]:
+    if not active:
+        return [0.0] * n
+    pct_arr = pct if pct else [0.0] * n
+    return [-pct_arr[p] * vol[p] * price[p] / 1000.0 for p in range(n)]
+
+
+def _compute_vta(inputs, n: int):
+    zeros = [0.0] * n
+    if not inputs.vta_active:
+        return zeros[:], zeros[:], zeros[:], zeros[:], zeros[:]
+    vol = inputs.vta_contracted_discharge_MWh or zeros
+    price = inputs.vta_discharge_price_per_MWh or zeros
+    coloc = _vta_layer(inputs.vta_colocation_active, inputs.vta_colocation_shortfall_pct, vol, price, n)
+    cap = _vta_layer(inputs.vta_capacity_shortfall_active, inputs.vta_capacity_shortfall_pct, vol, price, n)
+    deg = _vta_layer(inputs.vta_degradation_active, inputs.vta_degradation_shortfall_pct, vol, price, n)
+    tx = _vta_layer(inputs.vta_transmission_active, inputs.vta_transmission_loss_pct, vol, price, n)
+    total = [coloc[p] + cap[p] + deg[p] + tx[p] for p in range(n)]
+    return coloc, cap, deg, tx, total
+
+
+def _compute_fcas(inputs, dis_volume: list[float], n: int):
+    zeros = [0.0] * n
+    if not inputs.fcas_active:
+        return zeros[:], zeros[:], zeros[:]
+    reg_price = inputs.fcas_regulation_price_per_MWh or zeros
+    con_price = inputs.fcas_contingency_price_per_MWh or zeros
+    reg = [dis_volume[p] * reg_price[p] / 1000.0 for p in range(n)]
+    con = [dis_volume[p] * con_price[p] / 1000.0 for p in range(n)]
+    total = [reg[p] + con[p] for p in range(n)]
+    return reg, con, total
+
+
+# ============================================================================
 # MAIN CALCULATE
 # ============================================================================
 
@@ -411,8 +514,12 @@ def calculate(inputs: Inputs) -> Outputs:
                     if inputs.tolling_start_period <= p <= inputs.tolling_end_period:
                         tolling_rev[p] = monthly_fee
 
+        # VTA compensation works in external mode (has own volume/price inputs)
+        vta_coloc, vta_cap, vta_deg, vta_tx, vta_total = _compute_vta(inputs, n)
+
         gross = [ext_rev[p] + tolling_rev[p] for p in range(n)]
-        annual_net = [sum(gross[p] for p in plist) for plist in yg.values()]
+        net_rev = [gross[p] + vta_total[p] for p in range(n)]
+        annual_net = [sum(net_rev[p] for p in plist) for plist in yg.values()]
         return Outputs(
             discharge_volume=zeros[:],
             discharge_indexation_factor=[1.0] * n,
@@ -440,13 +547,21 @@ def calculate(inputs: Inputs) -> Outputs:
             bess_net_ex_multimarket=ext_rev,
             multimarket_revenue=zeros[:],
             tolling_revenue=tolling_rev,
+            fcas_regulation_revenue=zeros[:],
+            fcas_contingency_revenue=zeros[:],
+            fcas_total_revenue=zeros[:],
+            vta_colocation_compensation=vta_coloc,
+            vta_capacity_compensation=vta_cap,
+            vta_degradation_compensation=vta_deg,
+            vta_transmission_compensation=vta_tx,
+            vta_total_compensation=vta_total,
             effective_rte=[inputs.round_trip_efficiency] * n,
             effective_capacity_factor=[1.0] * n,
             gross_revenue=gross,
             total_costs=zeros[:],
-            net_revenue=gross,
+            net_revenue=net_rev,
             annual_net_revenue=annual_net,
-            total_net_revenue=sum(gross),
+            total_net_revenue=sum(net_rev),
         )
 
     # --- Degradation curves ---
@@ -586,8 +701,15 @@ def calculate(inputs: Inputs) -> Outputs:
                 if inputs.tolling_start_period <= p <= inputs.tolling_end_period:
                     tolling_rev[p] = monthly_fee
 
+    # --- I. FCAS revenue ---
+    fcas_reg, fcas_con, fcas_total = _compute_fcas(inputs, dis_volume, n)
+
+    # --- J. VTA compensation ---
+    vta_coloc, vta_cap, vta_deg, vta_tx, vta_total = _compute_vta(inputs, n)
+
     # --- G. Summary ---
-    gross_rev = [dis_revenue[p] + multi_rev[p] + tolling_rev[p] for p in range(n)]
+    gross_rev = [dis_revenue[p] + multi_rev[p] + tolling_rev[p] + fcas_total[p]
+                 for p in range(n)]
     total_costs = [
         total_chg_cost[p]
         + total_import_costs[p]
@@ -595,7 +717,7 @@ def calculate(inputs: Inputs) -> Outputs:
         - total_sys_adj[p]  # adjustments reduce net costs
         for p in range(n)
     ]
-    net_rev = [gross_rev[p] - total_costs[p] for p in range(n)]
+    net_rev = [gross_rev[p] - total_costs[p] + vta_total[p] for p in range(n)]
 
     annual_net = [sum(net_rev[p] for p in plist) for plist in yg.values()]
 
@@ -633,6 +755,16 @@ def calculate(inputs: Inputs) -> Outputs:
         multimarket_revenue=multi_rev,
         # H
         tolling_revenue=tolling_rev,
+        # I
+        fcas_regulation_revenue=fcas_reg,
+        fcas_contingency_revenue=fcas_con,
+        fcas_total_revenue=fcas_total,
+        # J
+        vta_colocation_compensation=vta_coloc,
+        vta_capacity_compensation=vta_cap,
+        vta_degradation_compensation=vta_deg,
+        vta_transmission_compensation=vta_tx,
+        vta_total_compensation=vta_total,
         # Degradation
         effective_rte=rte_monthly,
         effective_capacity_factor=cap_factors,
@@ -689,10 +821,20 @@ def get_excel_formulas(refs: dict) -> dict:
         "tolling_revenue": (
             f"={r['tolling_mw']}*{r['tolling_price']}*{r['tolling_factor']}/12/1000"
         ),
+        # I — FCAS
+        "fcas_regulation_revenue":    f"={r['dis_vol']}*{r['fcas_reg_price']}/1000",
+        "fcas_contingency_revenue":   f"={r['dis_vol']}*{r['fcas_con_price']}/1000",
+        "fcas_total_revenue":         f"={r['fcas_reg']}+{r['fcas_con']}",
+        # J — VTA
+        "vta_colocation_compensation":   f"=-{r['vta_coloc_pct']}*{r['vta_vol']}*{r['vta_price']}/1000",
+        "vta_capacity_compensation":     f"=-{r['vta_cap_pct']}*{r['vta_vol']}*{r['vta_price']}/1000",
+        "vta_degradation_compensation":  f"=-{r['vta_deg_pct']}*{r['vta_vol']}*{r['vta_price']}/1000",
+        "vta_transmission_compensation": f"=-{r['vta_tx_pct']}*{r['vta_vol']}*{r['vta_price']}/1000",
+        "vta_total_compensation":        f"={r['vta_coloc']}+{r['vta_cap']}+{r['vta_deg']}+{r['vta_tx']}",
         # G
-        "gross_revenue":              f"={r['dis_rev']}+{r['multi_rev']}+{r['tolling_rev']}",
+        "gross_revenue":              f"={r['dis_rev']}+{r['multi_rev']}+{r['tolling_rev']}+{r['fcas_total']}",
         "total_costs": (
             f"={r['chg_cost']}+{r['import_costs']}+{r['export_costs']}-{r['sys_adj']}"
         ),
-        "net_revenue":                f"={r['gross_rev']}-{r['total_costs']}",
+        "net_revenue":                f"={r['gross_rev']}-{r['total_costs']}+{r['vta_total']}",
     }
