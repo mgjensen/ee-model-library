@@ -1,11 +1,11 @@
 """
 MODULE_ID:    REV_002
-VERSION:      1.1
+VERSION:      1.2
 TIER:         detailed
 MARKETS:      ["DK", "DE", "AU", "SE", "*"]
 TECHNOLOGIES: ["BESS"]
 CREATED:      2026-03-17
-MODIFIED:     2026-03-29
+MODIFIED:     2026-04-01
 
 BESS revenue calculation — sub-sections A through G per EE_MODEL_BUILD_SPEC.md §5.2.
 Every line item is a named output field; no opaque totals.
@@ -57,6 +57,18 @@ class SystemTariff(BaseModel):
     tier2_rate_DKK_per_MWh: float = Field(0.0, ge=0)
     inflation_start_year: int = Field(2025)
     indexation_start_factor: float = Field(1.0, gt=0)
+
+
+class AncillaryStream(BaseModel):
+    """Generic ancillary service revenue stream (e.g. FCAS regulation, contingency)."""
+    name: str
+    price_curve: list[float]       # monthly, length=periods
+    inflation_start_year: int = 2025
+    indexation_start_factor: float = 1.0
+    inflate: bool = True           # False = curve already nominal
+    quantity_basis: str = "capacity"
+    # "capacity" -> power_MW / 12 per month
+    # "discharge" -> discharge_volume_MWh[p]
 
 
 # ============================================================================
@@ -146,6 +158,12 @@ class Inputs(BaseModel):
     vta_transmission_active: bool = Field(False)
     vta_transmission_loss_pct: list[float] = Field(default_factory=list)
 
+    # --- K. Generic ancillary streams + NEM loss factor chain ---
+    ancillary_streams: list[AncillaryStream] = Field(default_factory=list)
+    loss_factor_chain: Optional[list[float]] = Field(
+        None, description="NEM loss factor chain (TC x MLF x DLF) per period, values in (0,1]"
+    )
+
     # External curve pass-through mode
     external_mode: bool = Field(False, description="If True, use external BESS revenue curve instead of internal calc")
     external_bess_revenue_DKKk: list[float] = Field(default_factory=list)
@@ -215,6 +233,26 @@ class Inputs(BaseModel):
             ]:
                 if arr and len(arr) != n:
                     raise ValueError(f"{name} length {len(arr)} != periods {n}")
+        # Ancillary streams validation
+        for stream in self.ancillary_streams:
+            if len(stream.price_curve) != n:
+                raise ValueError(
+                    f"ancillary stream '{stream.name}' price_curve length "
+                    f"{len(stream.price_curve)} != periods {n}"
+                )
+            if stream.quantity_basis not in ("capacity", "discharge"):
+                raise ValueError(
+                    f"ancillary stream '{stream.name}' quantity_basis must be "
+                    f"'capacity' or 'discharge', got '{stream.quantity_basis}'"
+                )
+        # Loss factor chain validation
+        if self.loss_factor_chain is not None:
+            if len(self.loss_factor_chain) != n:
+                raise ValueError(
+                    f"loss_factor_chain length {len(self.loss_factor_chain)} != periods {n}"
+                )
+            if any(v <= 0 or v > 1.0 for v in self.loss_factor_chain):
+                raise ValueError("loss_factor_chain values must be in (0, 1]")
         # VTA validation
         self._validate_vta(n)
         return self
@@ -295,6 +333,11 @@ class Outputs(BaseModel):
     vta_degradation_compensation: list[float]   # currency-k (negative)
     vta_transmission_compensation: list[float]  # currency-k (negative)
     vta_total_compensation: list[float]         # currency-k (sum of 4 layers)
+
+    # --- K. Ancillary + loss factor ---
+    ancillary_revenues: dict[str, list[float]]  # per-stream revenues
+    total_ancillary_revenue: list[float]        # sum across all streams
+    loss_factor_applied: list[float]            # effective loss factors per period
 
     # --- G. Summary ---
     gross_revenue: list[float]                  # DKKk — discharge + multimarket + tolling + FCAS
@@ -487,6 +530,44 @@ def _compute_fcas(inputs, dis_volume: list[float], n: int):
     return reg, con, total
 
 
+def _compute_ancillary(
+    inputs,
+    dis_volume: list[float],
+    loss_factors: list[float],
+    yg: OrderedDict,
+    n: int,
+    inflation_rate: float,
+) -> tuple[dict[str, list[float]], list[float]]:
+    """Compute generic ancillary stream revenues."""
+    if not inputs.ancillary_streams:
+        return {}, [0.0] * n
+
+    revs: dict[str, list[float]] = {}
+    for stream in inputs.ancillary_streams:
+        rev = [0.0] * n
+        for year, year_periods in yg.items():
+            if stream.inflate:
+                f = _indexation_factor(
+                    year, stream.inflation_start_year,
+                    stream.indexation_start_factor, inflation_rate
+                )
+            else:
+                f = 1.0
+            for p in year_periods:
+                if stream.quantity_basis == "capacity":
+                    qty = inputs.power_MW / 12.0
+                else:  # "discharge"
+                    qty = dis_volume[p]
+                price = stream.price_curve[p] * f
+                rev[p] = qty * price * loss_factors[p] / 1000.0
+        revs[stream.name] = rev
+
+    total = [0.0] * n
+    for rev_list in revs.values():
+        total = [total[p] + rev_list[p] for p in range(n)]
+    return revs, total
+
+
 # ============================================================================
 # MAIN CALCULATE
 # ============================================================================
@@ -517,7 +598,13 @@ def calculate(inputs: Inputs) -> Outputs:
         # VTA compensation works in external mode (has own volume/price inputs)
         vta_coloc, vta_cap, vta_deg, vta_tx, vta_total = _compute_vta(inputs, n)
 
-        gross = [ext_rev[p] + tolling_rev[p] for p in range(n)]
+        # Ancillary streams in external mode
+        anc_revs, total_anc = _compute_ancillary(
+            inputs, zeros[:], [1.0] * n, yg, n, ir
+        )
+        loss_factors = inputs.loss_factor_chain or [1.0] * n
+
+        gross = [ext_rev[p] + tolling_rev[p] + total_anc[p] for p in range(n)]
         net_rev = [gross[p] + vta_total[p] for p in range(n)]
         annual_net = [sum(net_rev[p] for p in plist) for plist in yg.values()]
         return Outputs(
@@ -555,6 +642,9 @@ def calculate(inputs: Inputs) -> Outputs:
             vta_degradation_compensation=vta_deg,
             vta_transmission_compensation=vta_tx,
             vta_total_compensation=vta_total,
+            ancillary_revenues=anc_revs,
+            total_ancillary_revenue=total_anc,
+            loss_factor_applied=loss_factors,
             effective_rte=[inputs.round_trip_efficiency] * n,
             effective_capacity_factor=[1.0] * n,
             gross_revenue=gross,
@@ -585,6 +675,10 @@ def calculate(inputs: Inputs) -> Outputs:
     # Capacity curve scales discharge volume (effective energy available)
     dis_volume = [inputs.discharge_volume_MWh[p] * cap_factors[p] for p in range(n)]
     dis_revenue = [dis_volume[p] * dis_price_inf[p] / 1000.0 for p in range(n)]
+
+    # --- K. Loss factor chain (applies to merchant discharge revenue) ---
+    loss_factors = inputs.loss_factor_chain or [1.0] * n
+    dis_revenue = [dis_revenue[p] * loss_factors[p] for p in range(n)]
 
     # --- B. Charging costs ---
     chg_factor = _factor_series(
@@ -707,8 +801,14 @@ def calculate(inputs: Inputs) -> Outputs:
     # --- J. VTA compensation ---
     vta_coloc, vta_cap, vta_deg, vta_tx, vta_total = _compute_vta(inputs, n)
 
+    # --- K. Ancillary streams ---
+    anc_revs, total_anc = _compute_ancillary(
+        inputs, dis_volume, loss_factors, yg, n, ir
+    )
+
     # --- G. Summary ---
     gross_rev = [dis_revenue[p] + multi_rev[p] + tolling_rev[p] + fcas_total[p]
+                 + total_anc[p]
                  for p in range(n)]
     total_costs = [
         total_chg_cost[p]
@@ -765,6 +865,10 @@ def calculate(inputs: Inputs) -> Outputs:
         vta_degradation_compensation=vta_deg,
         vta_transmission_compensation=vta_tx,
         vta_total_compensation=vta_total,
+        # K
+        ancillary_revenues=anc_revs,
+        total_ancillary_revenue=total_anc,
+        loss_factor_applied=loss_factors,
         # Degradation
         effective_rte=rte_monthly,
         effective_capacity_factor=cap_factors,
@@ -831,8 +935,16 @@ def get_excel_formulas(refs: dict) -> dict:
         "vta_degradation_compensation":  f"=-{r['vta_deg_pct']}*{r['vta_vol']}*{r['vta_price']}/1000",
         "vta_transmission_compensation": f"=-{r['vta_tx_pct']}*{r['vta_vol']}*{r['vta_price']}/1000",
         "vta_total_compensation":        f"={r['vta_coloc']}+{r['vta_cap']}+{r['vta_deg']}+{r['vta_tx']}",
+        # K — Ancillary + loss factor
+        **({"ancillary_stream_revenue": f"={r['anc_qty']}*{r['anc_price']}*{r['loss_factor']}/1000"}
+           if "anc_qty" in r else {}),
+        **({"loss_factor_applied": f"={r['loss_factor']}"}
+           if "loss_factor" in r else {}),
         # G
-        "gross_revenue":              f"={r['dis_rev']}+{r['multi_rev']}+{r['tolling_rev']}+{r['fcas_total']}",
+        "gross_revenue": (
+            f"={r['dis_rev']}+{r['multi_rev']}+{r['tolling_rev']}+{r['fcas_total']}"
+            + (f"+{r['anc_total']}" if "anc_total" in r else "")
+        ),
         "total_costs": (
             f"={r['chg_cost']}+{r['import_costs']}+{r['export_costs']}-{r['sys_adj']}"
         ),

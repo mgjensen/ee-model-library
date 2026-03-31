@@ -6,6 +6,7 @@ from modules.revenue.REV_002 import (
     Outputs,
     VariableTariff,
     SystemTariff,
+    AncillaryStream,
     calculate,
     get_excel_formulas,
     _year_groups,
@@ -1205,3 +1206,125 @@ def test_existing_inputs_unchanged():
         assert out.gross_revenue[p] == pytest.approx(
             out.discharge_revenue[p] + out.multimarket_revenue[p] + out.tolling_revenue[p]
         )
+
+
+# ---------------------------------------------------------------------------
+# Ancillary streams + loss factor chain tests
+# ---------------------------------------------------------------------------
+
+def _anc_stream(name="test_stream", price=100.0, n=24, inflate=True,
+                quantity_basis="capacity", **kw):
+    return AncillaryStream(
+        name=name, price_curve=[price] * n, inflate=inflate,
+        quantity_basis=quantity_basis, **kw
+    )
+
+
+def test_ancillary_empty():
+    out = calculate(_flat())
+    assert out.ancillary_revenues == {}
+    assert out.total_ancillary_revenue == [0.0] * 24
+    assert out.loss_factor_applied == [1.0] * 24
+
+
+def test_ancillary_capacity_basis():
+    n = 12
+    power_mw = 100.0
+    price = 120.0
+    inp = _flat(periods=n, power_MW=power_mw,
+                ancillary_streams=[_anc_stream("fcas_reg", price=price, n=n,
+                                               inflate=False, quantity_basis="capacity")])
+    out = calculate(inp)
+    # qty = power_MW / 12 = 100/12; rev = qty * price * 1.0 / 1000
+    expected = (power_mw / 12.0) * price / 1000.0
+    assert "fcas_reg" in out.ancillary_revenues
+    assert out.ancillary_revenues["fcas_reg"][0] == pytest.approx(expected)
+    assert out.total_ancillary_revenue[0] == pytest.approx(expected)
+
+
+def test_ancillary_discharge_basis():
+    n = 12
+    dis_vol = 500.0
+    price = 50.0
+    inp = _flat(periods=n, dis_vol=dis_vol,
+                ancillary_streams=[_anc_stream("contingency", price=price, n=n,
+                                               inflate=False, quantity_basis="discharge")])
+    out = calculate(inp)
+    # qty = dis_volume[p] (500.0); rev = 500 * 50 / 1000 = 25.0
+    expected = dis_vol * price / 1000.0
+    assert out.ancillary_revenues["contingency"][0] == pytest.approx(expected)
+
+
+def test_ancillary_multiple_streams():
+    n = 12
+    streams = [
+        _anc_stream("s1", price=100.0, n=n, inflate=False, quantity_basis="capacity"),
+        _anc_stream("s2", price=200.0, n=n, inflate=False, quantity_basis="capacity"),
+        _anc_stream("s3", price=50.0, n=n, inflate=False, quantity_basis="discharge"),
+        _anc_stream("s4", price=80.0, n=n, inflate=False, quantity_basis="discharge"),
+    ]
+    inp = _flat(periods=n, power_MW=60.0, dis_vol=400.0,
+                ancillary_streams=streams)
+    out = calculate(inp)
+    assert len(out.ancillary_revenues) == 4
+    total_expected = sum(out.ancillary_revenues[s.name][0] for s in streams)
+    assert out.total_ancillary_revenue[0] == pytest.approx(total_expected)
+
+
+def test_loss_chain_reduces_discharge():
+    n = 12
+    lf = [0.90] * n
+    inp_no_lf = _flat(periods=n, dis_vol=500.0, dis_price=800.0)
+    inp_lf = _flat(periods=n, dis_vol=500.0, dis_price=800.0, loss_factor_chain=lf)
+    out_no = calculate(inp_no_lf)
+    out_lf = calculate(inp_lf)
+    # Discharge revenue should be 90% of original
+    assert out_lf.discharge_revenue[0] == pytest.approx(out_no.discharge_revenue[0] * 0.90)
+    assert out_lf.loss_factor_applied == lf
+
+
+def test_loss_chain_none():
+    out = calculate(_flat(loss_factor_chain=None))
+    assert out.loss_factor_applied == [1.0] * 24
+    # Discharge revenue unaffected
+    out2 = calculate(_flat())
+    assert out.discharge_revenue[0] == pytest.approx(out2.discharge_revenue[0])
+
+
+def test_loss_chain_doesnt_affect_tolling():
+    n = 12
+    lf = [0.80] * n
+    kw = dict(
+        periods=n, tolling_active=True, tolling_contracted_mw=50.0,
+        tolling_price_DKK_per_mw_per_year=120_000.0,
+        tolling_start_period=0, tolling_end_period=n - 1,
+    )
+    out_no = calculate(_flat(**kw))
+    out_lf = calculate(_flat(loss_factor_chain=lf, **kw))
+    # Tolling revenue should be identical
+    for p in range(n):
+        assert out_lf.tolling_revenue[p] == pytest.approx(out_no.tolling_revenue[p])
+
+
+def test_ancillary_external_mode():
+    n = 12
+    ext_rev = [100.0] * n
+    streams = [_anc_stream("ext_anc", price=60.0, n=n, inflate=False,
+                           quantity_basis="capacity")]
+    inp = _flat(periods=n, external_mode=True,
+                external_bess_revenue_DKKk=ext_rev,
+                ancillary_streams=streams)
+    out = calculate(inp)
+    assert "ext_anc" in out.ancillary_revenues
+    assert out.total_ancillary_revenue[0] > 0
+    # Gross includes ancillary
+    assert out.gross_revenue[0] == pytest.approx(
+        ext_rev[0] + out.total_ancillary_revenue[0]
+    )
+
+
+def test_ancillary_bad_length():
+    with pytest.raises(ValueError, match="price_curve length"):
+        _flat(periods=12, ancillary_streams=[
+            AncillaryStream(name="bad", price_curve=[10.0] * 6)
+        ])
